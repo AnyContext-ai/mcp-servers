@@ -8,4 +8,4 @@ RUN npm ci
 
 COPY . .
 
-ENTRYPOINT ["npx", "supergateway", "--stdio", "mongodb-lens.js"]
+ENTRYPOINT ["npx", "supergateway", "--stdio", "node mongodb-lens.js"]
