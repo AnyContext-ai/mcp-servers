@@ -14,23 +14,46 @@ jobs:
         project: 
           - { name: "fastmcp-openapi-server", path: "src/fastmcp-openapi", version_cmd: "grep '^version =' pyproject.toml | sed -E 's/version = \"(.*)\"/\\1/'" }
           - { name: "puppeteer-mcp-server", path: "src/puppeteer", version_cmd: "jq -r .version package.json" }
-          - { name: "slack-mcp-server", path: "src/slack",  version_cmd: "jq -r .version package.json" }
+          - { name: "slack-mcp-server", path: "src/slack", version_cmd: "jq -r .version package.json" }
           - { name: "thingsboard-mcp-server", path: "src/thingsboard", version_cmd: "grep '^version =' pyproject.toml | sed -E 's/version = \"(.*)\"/\\1/'" }
           - { name: "yr-mcp-server", path: "src/yr", version_cmd: "grep '^version =' pyproject.toml | sed -E 's/version = \"(.*)\"/\\1/'" }
-          - { name: "postgres-mcp-server", path: "src/postgres",  version_cmd: "jq -r .version package.json" }
-          - { name: "mongodb-lens", path: "src/mongodb-lens",  version_cmd: "jq -r .version package.json" }
+          - { name: "postgres-mcp-server", path: "src/postgres", version_cmd: "jq -r .version package.json" }
+          - { name: "mongodb-lens", path: "src/mongodb-lens", version_cmd: "jq -r .version package.json" }
 
     steps:
       - name: Checkout code
         uses: actions/checkout@v3
 
+      - name: Check if project has changes
+        id: check_changes
+        run: |
+          if git diff --quiet HEAD^ HEAD -- ${{ matrix.project.path }}; then
+            echo "CHANGED=false" >> $GITHUB_ENV
+          else
+            echo "CHANGED=true" >> $GITHUB_ENV
+          fi
+
       - name: Extract version from project
         id: get_version
+        if: env.CHANGED == 'true'
         run: |
           cd ${{ matrix.project.path }}
           echo "VERSION=$(${{ matrix.project.version_cmd }})" >> $GITHUB_ENV
+          echo "Extracted version: $VERSION"
+
+      - name: Check if image already exists
+        id: check_existing_image
+        if: env.CHANGED == 'true'
+        run: |
+          IMAGE_TAG="ghcr.io/anycontext-ai/${{ matrix.project.name }}:$VERSION"
+          if docker manifest inspect $IMAGE_TAG &> /dev/null; then
+            echo "EXISTS=true" >> $GITHUB_ENV
+          else
+            echo "EXISTS=false" >> $GITHUB_ENV
+          fi
 
       - name: Log in to GitHub Container Registry
+        if: env.CHANGED == 'true' && env.EXISTS == 'false'
         uses: docker/login-action@v2
         with:
           registry: ghcr.io
@@ -38,12 +61,14 @@ jobs:
           password: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Build Docker image
+        if: env.CHANGED == 'true' && env.EXISTS == 'false'
         run: |
           cd ${{ matrix.project.path }}
-          docker build -t ghcr.io/anycontext-ai/${{ matrix.project.name }}:latest .
-          docker build -t ghcr.io/anycontext-ai/${{ matrix.project.name }}:${VERSION} -t ghcr.io/anycontext-ai/${{ matrix.project.name }}:latest .
+          docker build -t ghcr.io/anycontext-ai/${{ matrix.project.name }}:latest \
+                       -t ghcr.io/anycontext-ai/${{ matrix.project.name }}:$VERSION .
 
       - name: Push Docker image
+        if: env.CHANGED == 'true' && env.EXISTS == 'false'
         run: |
-          docker push ghcr.io/anycontext-ai/${{ matrix.project.name }}:${VERSION}
+          docker push ghcr.io/anycontext-ai/${{ matrix.project.name }}:$VERSION
           docker push ghcr.io/anycontext-ai/${{ matrix.project.name }}:latest
