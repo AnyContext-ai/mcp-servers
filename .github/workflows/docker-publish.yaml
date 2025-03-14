@@ -19,6 +19,7 @@ jobs:
           - { name: "yr-mcp-server", path: "src/yr", version_cmd: "grep '^version =' pyproject.toml | sed -E 's/version = \"(.*)\"/\\1/'" }
           - { name: "postgres-mcp-server", path: "src/postgres", version_cmd: "jq -r .version package.json" }
           - { name: "mongodb-lens", path: "src/mongodb-lens", version_cmd: "jq -r .version package.json" }
+          - { name: "duckduckgo", path: "src/duckduckgo", version_cmd: "grep '^version =' pyproject.toml | sed -E 's/version = \"(.*)\"/\\1/'" }
 
     steps:
       - name: Checkout code
