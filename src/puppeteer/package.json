@@ -1,6 +1,6 @@
 {
     "name": "puppeteer-mcp-server",
-    "version": "0.0.1",
+    "version": "0.0.2",
     "description": "MCP server for browser automation using Puppeteer",
     "type": "module",
     "bin": {
@@ -15,7 +15,7 @@
         "watch": "tsc --watch"
     },
     "dependencies": {
-        "@modelcontextprotocol/sdk": "1.0.1",
+        "@modelcontextprotocol/sdk": "1.7.0",
         "puppeteer": "^24.4.0",
         "supergateway": "^2.0.1"
     },
