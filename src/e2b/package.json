@@ -1,0 +1,30 @@
+{
+    "name": "@e2b/mcp-server",
+    "version": "0.1.1",
+    "description": "A Model Context Protocol server",
+    "type": "module",
+    "bin": {
+      "@e2b/mcp-server": "./dist/index.js"
+    },
+    "files": [
+      "dist"
+    ],
+    "scripts": {
+      "build": "tsc && node -e \"require('fs').chmodSync('dist/index.js', '755')\"",
+      "prepare": "npm run build",
+      "watch": "tsc --watch",
+      "inspector": "npx @modelcontextprotocol/inspector dist/index.js"
+    },
+    "dependencies": {
+      "@e2b/code-interpreter": "^1.0.4",
+      "@modelcontextprotocol/sdk": "0.6.0",
+      "dotenv": "^16.4.5",
+      "zod": "^3.23.8",
+      "zod-to-json-schema": "^3.23.5",
+      "supergateway": "^2.0.1"
+    },
+    "devDependencies": {
+      "@types/node": "^20.11.24",
+      "typescript": "^5.3.3"
+    }
+  }
