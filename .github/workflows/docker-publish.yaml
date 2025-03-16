@@ -22,6 +22,7 @@ jobs:
           - { name: "duckduckgo", path: "src/duckduckgo", version_cmd: "grep '^version =' pyproject.toml | sed -E 's/version = \"(.*)\"/\\1/'" }
           - { name: "e2b", path: "src/e2b", version_cmd: "jq -r .version package.json" }
           - { name: "memory", path: "src/memory", version_cmd: "jq -r .version package.json" }
+          - { name: "sequentialthinking", path: "src/sequentialthinking", version_cmd: "jq -r .version package.json" }
 
     steps:
       - name: Checkout code
