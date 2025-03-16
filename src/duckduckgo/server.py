@@ -1,14 +1,11 @@
 from mcp.server.fastmcp import FastMCP, Context
 import httpx
 from bs4 import BeautifulSoup
-from typing import List, Dict, Optional, Any
+from typing import List
 from dataclasses import dataclass
 import urllib.parse
-import sys
-import traceback
 import asyncio
 from datetime import datetime, timedelta
-import time
 import re
 
 
@@ -80,7 +77,7 @@ class DuckDuckGoSearcher:
                 "kl": "",
             }
 
-            await ctx.info(f"Searching DuckDuckGo for: {query}")
+            ctx.info(f"Searching DuckDuckGo for: {query}")
 
             async with httpx.AsyncClient() as client:
                 response = await client.post(
@@ -91,7 +88,7 @@ class DuckDuckGoSearcher:
             # Parse HTML response
             soup = BeautifulSoup(response.text, "html.parser")
             if not soup:
-                await ctx.error("Failed to parse HTML response")
+                ctx.error("Failed to parse HTML response")
                 return []
 
             results = []
@@ -130,18 +127,17 @@ class DuckDuckGoSearcher:
                 if len(results) >= max_results:
                     break
 
-            await ctx.info(f"Successfully found {len(results)} results")
+            ctx.info(f"Successfully found {len(results)} results")
             return results
 
         except httpx.TimeoutException:
-            await ctx.error("Search request timed out")
+            ctx.error("Search request timed out")
             return []
         except httpx.HTTPError as e:
-            await ctx.error(f"HTTP error occurred: {str(e)}")
+            ctx.error(f"HTTP error occurred: {str(e)}")
             return []
         except Exception as e:
-            await ctx.error(f"Unexpected error during search: {str(e)}")
-            traceback.print_exc(file=sys.stderr)
+            ctx.error(f"Unexpected error during search: {str(e)}")
             return []
 
 
@@ -154,7 +150,7 @@ class WebContentFetcher:
         try:
             await self.rate_limiter.acquire()
 
-            await ctx.info(f"Fetching content from: {url}")
+            ctx.info(f"Fetching content from: {url}")
 
             async with httpx.AsyncClient() as client:
                 response = await client.get(
@@ -189,24 +185,24 @@ class WebContentFetcher:
             if len(text) > 8000:
                 text = text[:8000] + "... [content truncated]"
 
-            await ctx.info(
+            ctx.info(
                 f"Successfully fetched and parsed content ({len(text)} characters)"
             )
             return text
 
         except httpx.TimeoutException:
-            await ctx.error(f"Request timed out for URL: {url}")
+            ctx.error(f"Request timed out for URL: {url}")
             return "Error: The request timed out while trying to fetch the webpage."
         except httpx.HTTPError as e:
-            await ctx.error(f"HTTP error occurred while fetching {url}: {str(e)}")
+            ctx.error(f"HTTP error occurred while fetching {url}: {str(e)}")
             return f"Error: Could not access the webpage ({str(e)})"
         except Exception as e:
-            await ctx.error(f"Error fetching content from {url}: {str(e)}")
+            ctx.error(f"Error fetching content from {url}: {str(e)}")
             return f"Error: An unexpected error occurred while fetching the webpage ({str(e)})"
 
 
 # Initialize FastMCP server
-mcp = FastMCP("ddg-search")
+mcp = FastMCP("websearch")
 searcher = DuckDuckGoSearcher()
 fetcher = WebContentFetcher()
 
@@ -225,7 +221,7 @@ async def search(query: str, ctx: Context, max_results: int = 10) -> str:
         results = await searcher.search(query, ctx, max_results)
         return searcher.format_results_for_llm(results)
     except Exception as e:
-        traceback.print_exc(file=sys.stderr)
+        ctx.error(f"An error occurred while searching: {str(e)}")
         return f"An error occurred while searching: {str(e)}"
 
 
@@ -239,7 +235,6 @@ async def fetch_content(url: str, ctx: Context) -> str:
         ctx: MCP context for logging
     """
     return await fetcher.fetch_and_parse(url, ctx)
-
 
 def main():
     print("Starting DuckDuckGo server...")
