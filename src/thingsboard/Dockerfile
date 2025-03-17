@@ -27,4 +27,4 @@ ENV PATH="/app/.venv/bin:$PATH"
 
 EXPOSE 8000
 
-CMD ["uv", "run", "src/thingsboard.py"]
+CMD ["uv", "run", "thingsboard.py"]

@@ -27,4 +27,4 @@ ENV PATH="/app/.venv/bin:$PATH"
 
 EXPOSE 8000
 
-CMD ["uv", "run", "src/yr.py"]
+CMD ["uv", "run", "yr.py"]
