@@ -23,6 +23,7 @@ jobs:
           - { name: "e2b", path: "src/e2b", version_cmd: "jq -r .version package.json" }
           - { name: "memory", path: "src/memory", version_cmd: "jq -r .version package.json" }
           - { name: "sequentialthinking", path: "src/sequentialthinking", version_cmd: "jq -r .version package.json" }
+          - { name: "mcp-graphql", path: "src/mcp-graphql", version_cmd: "jq -r .version package.json" }
 
     steps:
       - name: Checkout code
