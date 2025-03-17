@@ -2,7 +2,7 @@ from typing import Any, Literal, Optional
 import httpx
 from mcp.server.fastmcp import FastMCP
 
-mcp = FastMCP("YR", port=9999)
+mcp = FastMCP("YR")
 
 YR_API_BASE = "https://api.met.no/weatherapi/locationforecast/2.0"
 
