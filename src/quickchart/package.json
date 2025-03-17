@@ -1,6 +1,6 @@
 {
     "name": "@gongrzhe/quickchart-mcp-server",
-    "version": "1.0.3",
+    "version": "1.0.4",
     "description": "A Model Context Protocol server for generating charts using QuickChart.io",
     "type": "module",
     "main": "dist/index.js",
