@@ -24,6 +24,7 @@ jobs:
           - { name: "memory", path: "src/memory", version_cmd: "jq -r .version package.json" }
           - { name: "sequentialthinking", path: "src/sequentialthinking", version_cmd: "jq -r .version package.json" }
           - { name: "mcp-graphql", path: "src/mcp-graphql", version_cmd: "jq -r .version package.json" }
+          - { name: "quickchart", path: "src/quickchart", version_cmd: "jq -r .version package.json" }
 
     steps:
       - name: Checkout code
