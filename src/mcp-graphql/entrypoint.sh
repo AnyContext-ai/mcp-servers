@@ -1,14 +1,6 @@
 #!/bin/sh
 set -e
 
-# Debugging: Print environment variables
-echo "ENTRYPOINT: Checking environment variables"
-env
-
-echo "ENDPOINT: $ENDPOINT"
-echo "BEARER_TOKEN: $BEARER_TOKEN"
-echo "ENABLE_MUTATIONS: $ENABLE_MUTATIONS"
-
 # Move into the correct directory
 cd /app
 
