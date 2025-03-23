@@ -1,0 +1,10 @@
+[project]
+name = "strava-mcp-server"
+version = "0.1.1"
+description = "Strava MCP server."
+readme = "README.md"
+requires-python = ">=3.10"
+dependencies = [
+    "requests>=2.32.3",
+    "mcp[cli]>=1.2.0",
+]

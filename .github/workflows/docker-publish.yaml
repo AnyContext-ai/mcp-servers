@@ -25,6 +25,7 @@ jobs:
           - { name: "sequentialthinking", path: "src/sequentialthinking", version_cmd: "jq -r .version package.json" }
           - { name: "mcp-graphql", path: "src/mcp-graphql", version_cmd: "jq -r .version package.json" }
           - { name: "quickchart", path: "src/quickchart", version_cmd: "jq -r .version package.json" }
+          - { name: "strava", path: "src/strava", version_cmd: "grep '^version =' pyproject.toml | sed -E 's/version = \"(.*)\"/\\1/'" }
 
     steps:
       - name: Checkout code
