@@ -1,8 +1,8 @@
 import json
 import time
 import httpx
-from fastmcp import FastMCP
-from openapi_client import OpenAPIClient
+from mcp.server.fastmcp import FastMCP
+from packages.openapi_client import OpenAPIClient
 from .register_openapi_tools import register_openapi_tools
 from argparse import ArgumentParser
 from typing import Optional, Dict

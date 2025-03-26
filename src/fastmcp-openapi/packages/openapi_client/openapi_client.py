@@ -1,7 +1,7 @@
 import httpx
 import re
 from typing import List
-from openapi_client.type_definitions.type_definitions import OpenAPIOperation, OpenAPISpec
+from packages.openapi_client.type_definitions.type_definitions import OpenAPIOperation, OpenAPISpec
 from openapi_spec_validator import validate
 from openapi_spec_validator.versions.shortcuts import get_spec_version
 from openapi_spec_validator.versions import consts as versions

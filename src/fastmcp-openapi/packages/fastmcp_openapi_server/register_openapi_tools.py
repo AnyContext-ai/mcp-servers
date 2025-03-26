@@ -1,7 +1,7 @@
 import inspect
 import functools
-from fastmcp import FastMCP
-from openapi_client import OpenAPIClient
+from mcp.server.fastmcp import FastMCP
+from packages.openapi_client import OpenAPIClient
 from typing import Any, Literal, Optional
 import re
 

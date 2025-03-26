@@ -5,7 +5,7 @@ description = "An MCP server that dynamically loads tools from an OpenAPI specif
 readme = "README.md"
 requires-python = ">=3.10"
 dependencies = [
-    "fastmcp>=0.4.1",
+    "mcp[cli]>=1.2.0",
     "httpx>=0.28.1",
     "jsonref>=1.1.0",
     "openapi-spec-validator>=0.7.1",
@@ -15,4 +15,4 @@ dev-dependencies = [
     "pytest>=8.3.4",
 ]
 [project.scripts]
-fastmcp-openapi-server = "fastmcp_openapi_server.__main__:main"
+fastmcp-openapi-server = "packages.fastmcp_openapi_server.__main__:main"
