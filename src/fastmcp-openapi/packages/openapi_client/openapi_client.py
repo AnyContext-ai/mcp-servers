@@ -165,7 +165,7 @@ class OpenAPIClient:
             param_name = parameter['name']
             param_in = parameter['in']  # Can be 'path', 'query', 'header', etc.
 
-            if param_name in kwargs:
+            if param_name in kwargs and kwargs[param_name] is not None:
                 if param_in == 'path':
                     path_params[param_name] = kwargs[param_name]
                 elif param_in == 'query':
@@ -177,7 +177,7 @@ class OpenAPIClient:
         if 'requestBody' in operation["details"]:
             schema = operation["details"]['requestBody']['content']['application/json']['schema']
             for prop in schema['properties']:
-                if prop in kwargs:
+                if prop in kwargs and kwargs[prop] is not None:
                     body[prop] = kwargs[prop]
 
         # Dynamically construct the path URL, removing the optional query parameters from the path
