@@ -74,7 +74,7 @@ async def get_tenant_devices(page: int = 0, page_size: int = 10) -> Any:
     return await make_thingsboard_request(endpoint, params)
 
 @mcp.tool()
-async def get_historic_device_telemetry(device_id: str, keys: str, startTs: str, endTs: str) -> Any:
+async def get_historic_device_telemetry(device_id: str, keys: str, startTs: int, endTs: int) -> Any:
     """Gets a range of time series values for specified device
 
     Args:
