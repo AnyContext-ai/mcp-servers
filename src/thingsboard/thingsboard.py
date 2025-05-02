@@ -1,12 +1,14 @@
-from typing import Any, Optional
+from typing import Any, Optional, Annotated
 import httpx
-from mcp.server.fastmcp import FastMCP
+from mcp.server.fastmcp import FastMCP, Image
 import os
 from dotenv import load_dotenv
 import sys
 from datetime import datetime, timedelta
 from pydantic import Field
 import pytz
+import json
+import urllib.parse
 
 load_dotenv()
 
@@ -63,78 +65,186 @@ async def make_thingsboard_request(endpoint: str, params: Optional[dict] = None)
 
 @mcp.tool()
 async def get_tenant_devices(
-    page: int = Field(0, description="The page number to retrieve"),
-    page_size: int = Field(10, description="The number of devices per page"),
-    text_search: Optional[str] = Field(None, description="Optional text search query to filter devices by name")
+    page: Annotated[int, Field(description="The page number to retrieve", ge=0)] = 0,
+    page_size: Annotated[int, Field(description="The number of devices per page", ge=1, le=100)] = 10,
+    text_search: Annotated[Optional[str], Field(description="Optional text search query to filter devices by name")] = None
 ) -> Any:
     """Get a paginated list of devices for the tenant"""
-    
     endpoint = "tenant/devices"
     params = {"page": page, "pageSize": page_size, "textSearch": text_search}
     return await make_thingsboard_request(endpoint, params)
 
 @mcp.tool()
+async def get_device_telemetry_keys(device_id: str = Field(..., description="The ID of the device")) -> Any:
+    """Get the telemetry keys for a specific device"""
+    
+    endpoint = f"plugins/telemetry/DEVICE/{device_id}/keys/timeseries"
+    return await make_thingsboard_request(endpoint)
+
+@mcp.tool()
 async def get_historic_device_telemetry(
-    device_id: str = Field(..., description="The ID of the device"),
-    keys: str = Field(..., description="Comma-separated list of telemetry keys to retrieve"),
-    startTs: int = Field(..., description="Start timestamp of the time range in milliseconds, UTC"),
-    endTs: int = Field(..., description="End timestamp of the time range in milliseconds, UTC")
+    device_id: Annotated[str, Field(description="The ID of the device")],
+    keys: Annotated[str, Field(description="Comma-separated list of telemetry keys to retrieve")],
+    startTs: Annotated[int, Field(description="Start timestamp of the time range in milliseconds, UTC")],
+    endTs: Annotated[int, Field(description="End timestamp of the time range in milliseconds, UTC")]
 ) -> Any:
     """Gets a range of time series values for specified device"""
-    
     endpoint = f"plugins/telemetry/DEVICE/{device_id}/values/timeseries"
     params = {"keys": keys, "startTs": startTs, "endTs": endTs}
     return await make_thingsboard_request(endpoint, params)
 
 @mcp.tool()
-async def get_latest_device_telemetry(device_id: str = Field(..., description="The ID of the device"), keys: str = Field(None, description="Comma-separated list of telemetry keys to retrieve. If not provided, all keys will be retrieved.")) -> Any:
+async def get_latest_device_telemetry(
+    device_id: Annotated[str, Field(description="The ID of the device")],
+    keys: Annotated[Optional[str], Field(description="Comma-separated list of telemetry keys to retrieve. If not provided, all keys will be retrieved.")] = None
+) -> Any:
     """Get latest telemetry data for a specific device"""
-    
     endpoint = f"plugins/telemetry/DEVICE/{device_id}/values/timeseries"
     params = {"keys": keys} if keys else None
     return await make_thingsboard_request(endpoint, params)
 
 @mcp.tool()
 async def get_device_attributes(
-    device_id: str = Field(..., description="The ID of the device")
+    device_id: Annotated[str, Field(description="The ID of the device")]
 ) -> Any:
     """Get attributes for a specific device"""
-    
     endpoint = f"plugins/telemetry/DEVICE/{device_id}/values/attributes"
     return await make_thingsboard_request(endpoint)
 
 @mcp.tool()
+async def create_telemetry_line_chart(
+    device_id: Annotated[str, Field(description="The ID of the device")],
+    keys: Annotated[str, Field(description="Comma-separated list of telemetry keys to include in the chart")],
+    hours_ago: Annotated[int, Field(description="Number of hours of data to include", gt=0)] = 24,
+    chart_title: Annotated[str, Field(description="Title of the chart")] = "Device Telemetry",
+    chart_width: Annotated[int, Field(description="Width of the chart in pixels", ge=100, le=2000)] = 800,
+    chart_height: Annotated[int, Field(description="Height of the chart in pixels", ge=100, le=2000)] = 400,
+    timezone: Annotated[str, Field(description="Timezone for the x-axis labels")] = "UTC"
+) -> Image:
+    """Fetches device telemetry data and creates a line chart"""
+    # Get the time range
+    time_range = get_time_range(hours_ago=hours_ago)
+    
+    # Get the telemetry data
+    telemetry_data = await get_historic_device_telemetry(
+        device_id=device_id,
+        keys=keys,
+        startTs=time_range["startTs"],
+        endTs=time_range["endTs"]
+    )
+    
+    # Prepare data for QuickChart
+    datasets = []
+    labels = set()
+    
+    for key, values in telemetry_data.items():
+        if not values:  # Skip empty datasets
+            continue
+            
+        # Sort values by timestamp
+        sorted_values = sorted(values, key=lambda x: x["ts"])
+        
+        # Extract timestamps and values
+        timestamps = [v["ts"] for v in sorted_values]
+        data_points = [v["value"] for v in sorted_values]
+        
+        # Add timestamps to labels
+        labels.update(timestamps)
+        
+        # Create dataset
+        datasets.append({
+            "label": key,
+            "data": data_points,
+            "fill": False,
+            "borderColor": f"rgb({hash(key) % 255}, {hash(key + '1') % 255}, {hash(key + '2') % 255})"
+        })
+    
+    # Sort labels chronologically
+    labels = sorted(list(labels))
+    
+    # Format timestamps for x-axis
+    formatted_labels = []
+    for ts in labels:
+        dt = datetime.fromtimestamp(ts / 1000)
+        tz = pytz.timezone(timezone)
+        dt = dt.astimezone(tz)
+        formatted_labels.append(dt.strftime("%H:%M"))
+    
+    # Create chart configuration
+    chart_config = {
+        "type": "line",
+        "data": {
+            "labels": formatted_labels,
+            "datasets": datasets
+        },
+        "options": {
+            "title": {
+                "display": True,
+                "text": chart_title
+            },
+            "scales": {
+                "xAxes": [{
+                    "scaleLabel": {
+                        "display": True,
+                        "labelString": "Time"
+                    }
+                }],
+                "yAxes": [{
+                    "scaleLabel": {
+                        "display": True,
+                        "labelString": "Value"
+                    }
+                }]
+            }
+        }
+    }
+    
+    # Encode chart configuration
+    encoded_config = urllib.parse.quote(json.dumps(chart_config))
+    
+    # Generate QuickChart URL
+    chart_url = f"https://quickchart.io/chart?c={encoded_config}&width={chart_width}&height={chart_height}"
+    
+    # Fetch the chart image
+    async with httpx.AsyncClient() as client:
+        response = await client.get(chart_url)
+        response.raise_for_status()
+        
+        # Return the image data
+        return Image(data=response.content, format="png")
+
+@mcp.tool()
 async def get_customers(
-    page: int = Field(0, description="The page number to retrieve"),
-    page_size: int = Field(10, description="The number of customers per page"),
-    text_search: Optional[str] = Field(None, description="Optional text search query to filter customers by name")
+    page: Annotated[int, Field(description="The page number to retrieve", ge=0)] = 0,
+    page_size: Annotated[int, Field(description="The number of customers per page", ge=1, le=100)] = 10,
+    text_search: Annotated[Optional[str], Field(description="Optional text search query to filter customers by name")] = None
 ) -> Any:
     """Get a list of customers"""
-    
     endpoint = "customers"
     params = {"page": page, "pageSize": page_size, "textSearch": text_search}
     return await make_thingsboard_request(endpoint, params)
 
 # Time tools
 @mcp.tool()
-async def get_current_time() -> int:
+def get_current_time() -> int:
     """Get the current time in milliseconds, UTC"""
     return int(datetime.now().timestamp() * 1000)
 
 @mcp.tool()
-async def get_time_range(
-    hours_ago: int = Field(..., description="Number of hours to look back from current time"),
-    end_time: Optional[int] = Field(None, description="End time in milliseconds UTC. If not provided, current time will be used")
+def get_time_range(
+    hours_ago: Annotated[int, Field(description="Number of hours to look back from current time", gt=0)],
+    end_time: Annotated[Optional[int], Field(description="End time in milliseconds UTC. If not provided, current time will be used")] = None
 ) -> dict[str, int]:
     """Get a time range for ThingsBoard queries"""
-    end_ts = end_time if end_time is not None else await get_current_time()
+    current_time = get_current_time()
+    end_ts = int(end_time) if end_time is not None else current_time
     start_ts = int((datetime.fromtimestamp(end_ts / 1000) - timedelta(hours=hours_ago)).timestamp() * 1000)
     return {"startTs": start_ts, "endTs": end_ts}
 
 @mcp.tool()
-async def convert_to_timestamp(
-    date_str: str = Field(..., description="Date string in format YYYY-MM-DD HH:MM:SS"),
-    timezone: str = Field("UTC", description="Timezone of the input date (e.g. 'UTC', 'America/New_York')")
+def convert_to_timestamp(
+    date_str: Annotated[str, Field(description="Date string in format YYYY-MM-DD HH:MM:SS")],
+    timezone: Annotated[str, Field(description="Timezone of the input date (e.g. 'UTC', 'America/New_York')")] = "UTC"
 ) -> int:
     """Convert a date string to milliseconds timestamp"""
     dt = datetime.strptime(date_str, "%Y-%m-%d %H:%M:%S")
@@ -143,10 +253,10 @@ async def convert_to_timestamp(
     return int(dt.timestamp() * 1000)
 
 @mcp.tool()
-async def format_timestamp(
-    timestamp_ms: int = Field(..., description="Timestamp in milliseconds UTC"),
-    timezone: str = Field("UTC", description="Timezone to format the date in (e.g. 'UTC', 'America/New_York')"),
-    format: str = Field("%Y-%m-%d %H:%M:%S", description="Python datetime format string")
+def format_timestamp(
+    timestamp_ms: Annotated[int, Field(description="Timestamp in milliseconds UTC")],
+    timezone: Annotated[str, Field(description="Timezone to format the date in (e.g. 'UTC', 'America/New_York')")] = "UTC",
+    format: Annotated[str, Field(description="Python datetime format string")] = "%Y-%m-%d %H:%M:%S"
 ) -> str:
     """Format a timestamp into a readable date string"""
     dt = datetime.fromtimestamp(timestamp_ms / 1000)
