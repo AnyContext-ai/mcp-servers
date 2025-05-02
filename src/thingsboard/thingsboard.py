@@ -7,8 +7,9 @@ import sys
 from datetime import datetime, timedelta
 from pydantic import Field
 import pytz
-import json
-import urllib.parse
+from io import BytesIO
+import matplotlib.pyplot as plt
+import matplotlib.dates as mdates
 
 load_dotenv()
 
@@ -133,10 +134,11 @@ async def create_telemetry_line_chart(
         endTs=time_range["endTs"]
     )
     
-    # Prepare data for QuickChart
-    datasets = []
-    labels = set()
+    # Set up the plot style
+    plt.style.use('bmh')  # Using a built-in style
+    fig, ax = plt.subplots(figsize=(chart_width/100, chart_height/100), dpi=100)
     
+    # Plot each telemetry key
     for key, values in telemetry_data.items():
         if not values:  # Skip empty datasets
             continue
@@ -145,73 +147,37 @@ async def create_telemetry_line_chart(
         sorted_values = sorted(values, key=lambda x: x["ts"])
         
         # Extract timestamps and values
-        timestamps = [v["ts"] for v in sorted_values]
+        timestamps = [datetime.fromtimestamp(v["ts"] / 1000) for v in sorted_values]
         data_points = [v["value"] for v in sorted_values]
         
-        # Add timestamps to labels
-        labels.update(timestamps)
-        
-        # Create dataset
-        datasets.append({
-            "label": key,
-            "data": data_points,
-            "fill": False,
-            "borderColor": f"rgb({hash(key) % 255}, {hash(key + '1') % 255}, {hash(key + '2') % 255})"
-        })
+        # Plot the line
+        ax.plot(timestamps, data_points, label=key, linewidth=2)
     
-    # Sort labels chronologically
-    labels = sorted(list(labels))
+    # Set the timezone for x-axis
+    tz = pytz.timezone(timezone)
+    ax.xaxis.set_major_formatter(mdates.DateFormatter('%H:%M', tz=tz))
     
-    # Format timestamps for x-axis
-    formatted_labels = []
-    for ts in labels:
-        dt = datetime.fromtimestamp(ts / 1000)
-        tz = pytz.timezone(timezone)
-        dt = dt.astimezone(tz)
-        formatted_labels.append(dt.strftime("%H:%M"))
+    # Rotate x-axis labels for better readability
+    plt.xticks(rotation=45)
     
-    # Create chart configuration
-    chart_config = {
-        "type": "line",
-        "data": {
-            "labels": formatted_labels,
-            "datasets": datasets
-        },
-        "options": {
-            "title": {
-                "display": True,
-                "text": chart_title
-            },
-            "scales": {
-                "xAxes": [{
-                    "scaleLabel": {
-                        "display": True,
-                        "labelString": "Time"
-                    }
-                }],
-                "yAxes": [{
-                    "scaleLabel": {
-                        "display": True,
-                        "labelString": "Value"
-                    }
-                }]
-            }
-        }
-    }
+    # Add labels and title
+    ax.set_xlabel('Time')
+    ax.set_ylabel('Value')
+    ax.set_title(chart_title)
     
-    # Encode chart configuration
-    encoded_config = urllib.parse.quote(json.dumps(chart_config))
+    # Add legend
+    ax.legend(bbox_to_anchor=(1.05, 1), loc='upper left')
     
-    # Generate QuickChart URL
-    chart_url = f"https://quickchart.io/chart?c={encoded_config}&width={chart_width}&height={chart_height}"
+    # Adjust layout to prevent label cutoff
+    plt.tight_layout()
     
-    # Fetch the chart image
-    async with httpx.AsyncClient() as client:
-        response = await client.get(chart_url)
-        response.raise_for_status()
-        
-        # Return the image data
-        return Image(data=response.content, format="png")
+    # Save the plot to a BytesIO buffer
+    buffer = BytesIO()
+    plt.savefig(buffer, format='png', bbox_inches='tight')
+    plt.close()
+    
+    # Return the image data
+    return Image(data=buffer.getvalue(), format="png")
 
 @mcp.tool()
 async def get_customers(
