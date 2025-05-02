@@ -6,7 +6,7 @@ from dotenv import load_dotenv
 import sys
 from datetime import datetime, timedelta
 from pydantic import Field
-from zoneinfo import ZoneInfo
+import pytz
 
 load_dotenv()
 
@@ -65,7 +65,7 @@ async def make_thingsboard_request(endpoint: str, params: Optional[dict] = None)
 async def get_tenant_devices(
     page: int = Field(0, description="The page number to retrieve"),
     page_size: int = Field(10, description="The number of devices per page"),
-    text_search: str = Field(None, description="Optional text search query to filter devices by name")
+    text_search: Optional[str] = Field(None, description="Optional text search query to filter devices by name")
 ) -> Any:
     """Get a paginated list of devices for the tenant"""
     
@@ -107,7 +107,7 @@ async def get_device_attributes(
 async def get_customers(
     page: int = Field(0, description="The page number to retrieve"),
     page_size: int = Field(10, description="The number of customers per page"),
-    text_search: str = Field(None, description="Optional text search query to filter customers by name")
+    text_search: Optional[str] = Field(None, description="Optional text search query to filter customers by name")
 ) -> Any:
     """Get a list of customers"""
     
@@ -138,7 +138,8 @@ async def convert_to_timestamp(
 ) -> int:
     """Convert a date string to milliseconds timestamp"""
     dt = datetime.strptime(date_str, "%Y-%m-%d %H:%M:%S")
-    dt = dt.replace(tzinfo=ZoneInfo(timezone))
+    tz = pytz.timezone(timezone)
+    dt = tz.localize(dt)
     return int(dt.timestamp() * 1000)
 
 @mcp.tool()
@@ -148,7 +149,9 @@ async def format_timestamp(
     format: str = Field("%Y-%m-%d %H:%M:%S", description="Python datetime format string")
 ) -> str:
     """Format a timestamp into a readable date string"""
-    dt = datetime.fromtimestamp(timestamp_ms / 1000, tz=ZoneInfo(timezone))
+    dt = datetime.fromtimestamp(timestamp_ms / 1000)
+    tz = pytz.timezone(timezone)
+    dt = dt.astimezone(tz)
     return dt.strftime(format)
 
 if __name__ == "__main__":
