@@ -131,4 +131,4 @@ if __name__ == "__main__":
         
     auth_token = get_auth_token(THINGSBOARD_USERNAME, THINGSBOARD_PASSWORD)
         
-    mcp.run(transport="sse")
+    mcp.run(transport="streamable-http")
