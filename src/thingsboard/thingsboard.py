@@ -61,6 +61,21 @@ async def make_thingsboard_request(endpoint: str, params: Optional[dict] = None)
             return {"error": "Unable to fetch data from ThingsBoard", "details": str(e)}
 
 @mcp.tool()
+async def get_tenant_devices(page: int = 0, page_size: int = 10) -> Any:
+    """Get a paginated list of devices for the tenant.
+
+    Args:
+        page (int): The page number to retrieve. Defaults to 0.
+        page_size (int): The number of devices per page. Defaults to 10.
+
+    Returns:
+        Any: JSON response
+    """
+    endpoint = "tenant/devices"
+    params = {"page": page, "pageSize": page_size}
+    return await make_thingsboard_request(endpoint, params)
+
+@mcp.tool()
 async def get_tenant_devices_filtered(page: int = 0, page_size: int = 10) -> Any:
     """Get a paginated list of devices for the tenant.
 
@@ -69,7 +84,7 @@ async def get_tenant_devices_filtered(page: int = 0, page_size: int = 10) -> Any
         page_size (int): The number of devices per page. Defaults to 10.
 
     Returns:
-        Any: Filtered JSON response with only essential device information
+        Any: JSON response devices. The information about the devices are filtered.
     """
     endpoint = "tenant/devices"
     params = {"page": page, "pageSize": page_size}
