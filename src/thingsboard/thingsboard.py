@@ -5,6 +5,8 @@ import os
 from dotenv import load_dotenv
 import sys
 
+from helpers import filter_device_data
+
 load_dotenv()
 
 mcp = FastMCP("ThingsBoard")
@@ -67,11 +69,27 @@ async def get_tenant_devices(page: int = 0, page_size: int = 10) -> Any:
         page_size (int): The number of devices per page. Defaults to 10.
 
     Returns:
-        Any: JSON response
+        Any: Filtered JSON response with only essential device information
     """
     endpoint = "tenant/devices"
     params = {"page": page, "pageSize": page_size}
-    return await make_thingsboard_request(endpoint, params)
+    response = await make_thingsboard_request(endpoint, params)
+    
+    # Filter the response to include only essential fields
+    if "data" in response and isinstance(response["data"], list):
+        filtered_devices = []
+        for device in response["data"]:
+            filtered_device = filter_device_data(device)
+            filtered_devices.append(filtered_device)
+        
+        return {
+            "data": filtered_devices,
+            "totalElements": response.get("totalElements"),
+            "totalPages": response.get("totalPages"),
+            "hasNext": response.get("hasNext")
+        }
+    
+    return response
 
 @mcp.tool()
 async def get_historic_device_telemetry(device_id: str, keys: str, startTs: int, endTs: int) -> Any:
