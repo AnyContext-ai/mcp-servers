@@ -166,12 +166,12 @@ async def get_average_device_telemetry(device_id: str, keys: str, startTs: int, 
     return averages
 
 @mcp.tool()
-async def get_latest_device_telemetry(device_id: str, keys: Optional[str] = None) -> Any:
+async def get_latest_device_telemetry(device_id: str, keys: str = "") -> Any:
     """Get latest telemetry data for a specific device.
 
     Args:
         device_id (str): The ID of the device.
-        keys (Optional[str]): Comma-separated list of telemetry keys to retrieve. Defaults to None.
+        keys (str): Comma-separated list of telemetry keys to retrieve. Defaults to empty string to get all keys.
 
     Returns:
         Any: JSON response
