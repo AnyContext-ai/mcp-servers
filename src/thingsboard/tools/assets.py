@@ -5,14 +5,34 @@ from utils.helpers import filter_entity_information
 
 @mcp.tool()
 async def get_tenant_assets_filtered(page: int = 0, page_size: int = 10) -> Any:
-    """Get a paginated list of assets for the tenant.
-
+    """Retrieve a paginated list of IoT assets from ThingsBoard with essential information only.
+    
+    Use this tool when you need to:
+    - List all assets in a ThingsBoard tenant for monitoring or management
+    - Get asset IDs for further operations like telemetry queries or attribute retrieval
+    - Browse assets to understand what IoT assets are connected to the system
+    - Find specific assets by name or type for targeted operations
+    
+    The response includes only essential asset information to keep the output clean and focused. 
+    Use the returned asset IDs with other tools.
+    
     Args:
-        page (int): The page number to retrieve. Defaults to 0.
-        page_size (int): The number of assets per page. Defaults to 10.
-
+        page (int): Page number for pagination (0-based). Use 0 for first page, 1 for second, etc.
+                   Default: 0
+        page_size (int): Number of assets per page. Default: 10, max recommended: 50 for performance.
+                        Higher values may slow down the response.
+    
     Returns:
-        Any: JSON response assets. The information about the assets are filtered.
+        Dict containing:
+        - data: List of assets with filtered information (id, name, entityType, label, type, profileId)
+        - totalElements: Total number of assets in tenant
+        - totalPages: Total number of pages available
+        - hasNext: Boolean indicating if more pages exist
+    
+    Example usage:
+        To get first 20 assets: page=0, page_size=20
+        To get second page of 10 assets: page=1, page_size=10
+        To get all assets (if less than 50): page=0, page_size=50
     """
     endpoint = "tenant/assets"
     params = {"page": page, "pageSize": page_size}
