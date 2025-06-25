@@ -3,7 +3,9 @@ from dotenv import load_dotenv
 import sys
 
 from resources.mcp_server import mcp
-import tools.device
+import tools.devices
+import tools.telemetry
+import tools.assets
 from resources.thingsboard_client import ThingsboardClient
 
 load_dotenv()
@@ -15,6 +17,7 @@ THINGSBOARD_PASSWORD = os.getenv("THINGSBOARD_PASSWORD", None)
 
 
 if __name__ == "__main__":
+    # TODO: Move to a separate file
     if not THINGSBOARD_API_BASE:
         print("Missing THINGSBOARD_API_BASE environment variable")
         sys.exit(1)

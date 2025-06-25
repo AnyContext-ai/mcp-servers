@@ -1,62 +1,14 @@
 from resources.mcp_server import mcp
 from typing import Any
 from resources.thingsboard_client import ThingsboardClient
-from tools.helpers import filter_device_data
-
-
-# Might be removed
-@mcp.tool()
-async def get_tenant_devices(page: int = 0, page_size: int = 10) -> Any:
-    """Get a paginated list of devices for the tenant.
-
-    Args:
-        page (int): The page number to retrieve. Defaults to 0.
-        page_size (int): The number of devices per page. Defaults to 10.
-
-    Returns:
-        Any: JSON response
-    """
-    endpoint = "tenant/devices"
-    params = {"page": page, "pageSize": page_size}
-    return await ThingsboardClient.make_thingsboard_request(endpoint, params)
 
 @mcp.tool()
-async def get_tenant_devices_filtered(page: int = 0, page_size: int = 10) -> Any:
-    """Get a paginated list of devices for the tenant.
+async def get_historic_telemetry(id: str, entity_type: str, keys: str, startTs: int, endTs: int) -> Any:
+    """Gets a range of time series values for specified entity. The values are 
 
     Args:
-        page (int): The page number to retrieve. Defaults to 0.
-        page_size (int): The number of devices per page. Defaults to 10.
-
-    Returns:
-        Any: JSON response devices. The information about the devices are filtered.
-    """
-    endpoint = "tenant/devices"
-    params = {"page": page, "pageSize": page_size}
-    response = await ThingsboardClient.make_thingsboard_request(endpoint, params)
-    
-    # Filter the response to include only essential fields
-    if "data" in response and isinstance(response["data"], list):
-        filtered_devices = []
-        for device in response["data"]:
-            filtered_device = filter_device_data(device)
-            filtered_devices.append(filtered_device)
-        
-        return {
-            "data": filtered_devices,
-            "totalElements": response.get("totalElements"),
-            "totalPages": response.get("totalPages"),
-            "hasNext": response.get("hasNext")
-        }
-    
-    return response
-
-@mcp.tool()
-async def get_historic_device_telemetry(device_id: str, keys: str, startTs: int, endTs: int) -> Any:
-    """Gets a range of time series values for specified device
-
-    Args:
-        device_id (str): The ID of the device.
+        id (str): The ID of the entity.
+        entity_type (str): The entity type. Must be either DEVICE or ASSET.
         keys (str): Comma-separated list of telemetry keys to retrieve.
         startTs (int): Start timestamp of the time range in milliseconds, UTC 
         endTs (int): End timestamp of the time range in milliseconds, UTC
@@ -64,16 +16,17 @@ async def get_historic_device_telemetry(device_id: str, keys: str, startTs: int,
     Returns:
         Any: JSON response
     """
-    endpoint = f"plugins/telemetry/DEVICE/{device_id}/values/timeseries"
+    endpoint = f"plugins/telemetry/{entity_type}/{id}/values/timeseries"
     params = {"keys": keys, "startTs": startTs, "endTs": endTs}
     return await ThingsboardClient.make_thingsboard_request(endpoint, params)
 
 @mcp.tool()
-async def get_average_device_telemetry(device_id: str, keys: str, startTs: int, endTs: int) -> Any:
-    """Gets the average of a range of time series values for specified device and keys
+async def get_average_telemetry(id: str, entity_type: str, keys: str, startTs: int, endTs: int) -> Any:
+    """Gets the average of a range of time series values for specified entity and keys
 
     Args:
-        device_id (str): The ID of the device.
+        id (str): The ID of the entity.
+        entity_type (str): The entity type. Must either be DEVICE or ASSET.
         keys (str): Comma-separated list of telemetry keys to retrieve.
         startTs (int): Start timestamp of the time range in milliseconds, UTC 
         endTs (int): End timestamp of the time range in milliseconds, UTC
@@ -81,7 +34,7 @@ async def get_average_device_telemetry(device_id: str, keys: str, startTs: int, 
     Returns:
         Any: JSON response with average values for each key
     """
-    endpoint = f"plugins/telemetry/DEVICE/{device_id}/values/timeseries"
+    endpoint = f"plugins/telemetry/{entity_type}/{id}/values/timeseries"
     params = {"keys": keys, "startTs": startTs, "endTs": endTs}
     response = await ThingsboardClient.make_thingsboard_request(endpoint, params)
     
@@ -126,29 +79,31 @@ async def get_average_device_telemetry(device_id: str, keys: str, startTs: int, 
     return averages
 
 @mcp.tool()
-async def get_latest_device_telemetry(device_id: str, keys: str = "") -> Any:
-    """Get latest telemetry data for a specific device.
+async def get_latest_telemetry(id: str, entity_type: str, keys: str = "") -> Any:
+    """Get latest telemetry data for a specific entity.
 
     Args:
-        device_id (str): The ID of the device.
+        id (str): The ID of the entity.
+        entity_type (str): The entity type. Must either be DEVICE or ASSET.
         keys (str): Comma-separated list of telemetry keys to retrieve. Defaults to empty string to get all keys.
 
     Returns:
         Any: JSON response
     """
-    endpoint = f"plugins/telemetry/DEVICE/{device_id}/values/timeseries"
+    endpoint = f"plugins/telemetry/{entity_type}/{id}/values/timeseries"
     params = {"keys": keys} if keys else None
     return await ThingsboardClient.make_thingsboard_request(endpoint, params)
 
 @mcp.tool()
-async def get_device_attributes(device_id: str) -> Any:
-    """Get attributes for a specific device.
+async def get_entity_attributes(id: str, entity_type: str) -> Any:
+    """Get attributes for a specific entity.
 
     Args:
-        device_id (str): The ID of the device.
+        id (str): The ID of the entity.
+        entity_type (str): The entity type. Must either be DEVICE or ASSET.
 
     Returns:
         Any: JSON response
     """
-    endpoint = f"plugins/telemetry/DEVICE/{device_id}/values/attributes"
+    endpoint = f"plugins/telemetry/{entity_type}/{id}/values/attributes"
     return await ThingsboardClient.make_thingsboard_request(endpoint)

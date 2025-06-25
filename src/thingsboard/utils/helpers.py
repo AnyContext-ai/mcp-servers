@@ -1,4 +1,5 @@
-def filter_device_data(device: dict, fields: list=None) -> dict:
+
+def filter_entity_information(device: dict, fields: list=None) -> dict:
     """Filter device data to include only specified fields.
     
     Args:
@@ -9,13 +10,14 @@ def filter_device_data(device: dict, fields: list=None) -> dict:
         dict: Filtered device data
     """
     if not fields:
-        fields = ["id", "name", "type", "label", "deviceProfileId"]
+        fields = ["id", "name", "type", "label", "deviceProfileId", "assetProfileId"]
     
     filtered_device = {}
     
     for field in fields:
         if field == "id":
             filtered_device["id"] = device.get("id", {}).get("id")
+            filtered_device["entityType"] = device.get("id", {}).get("entityType")
         elif field == "name":
             filtered_device["name"] = device.get("name")
         elif field == "type":
@@ -23,7 +25,9 @@ def filter_device_data(device: dict, fields: list=None) -> dict:
         elif field == "label":
             filtered_device["label"] = device.get("label")
         elif field == "deviceProfileId":
-            filtered_device["deviceProfileId"] = device.get("deviceProfileId", {}).get("id")
+            filtered_device["profileId"] = device.get("deviceProfileId", {}).get("id")
+        elif field == "assetProfileId":
+            filtered_device["profileId"] = device.get("assetProfileId", {}).get("id")
         elif field in device:
             filtered_device[field] = device.get(field)
     
