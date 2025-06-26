@@ -6,6 +6,7 @@ from resources.mcp_server import mcp
 import tools.devices
 import tools.telemetry
 import tools.assets
+import tools.relations
 from resources.thingsboard_client import ThingsboardClient
 
 load_dotenv()
