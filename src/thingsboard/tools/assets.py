@@ -4,7 +4,7 @@ from resources.thingsboard_client import ThingsboardClient
 from utils.helpers import filter_entity_information
 
 @mcp.tool()
-async def get_tenant_assets_filtered(page: int = 0, page_size: int = 10) -> Any:
+async def get_tenant_assets(page: int = 0, page_size: int = 10) -> Any:
     """Retrieve a paginated list of IoT assets from ThingsBoard with essential information only.
     
     Use this tool when you need to:
