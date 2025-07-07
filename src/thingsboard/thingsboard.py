@@ -31,4 +31,4 @@ if __name__ == "__main__":
         
     ThingsboardClient.initialize_thingsboard_client()
         
-    mcp.run(transport="sse")
+    mcp.run(transport="streamable-http")
