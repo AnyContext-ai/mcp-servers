@@ -24,8 +24,10 @@ class ThingsboardClient:
         THINGSBOARD_API_BASE = os.getenv("THINGSBOARD_API_BASE", None)
         url = f"{THINGSBOARD_API_BASE}/{endpoint}"
         headers = {"Authorization": f"Bearer {cls._auth_token}"}
+        
+        verify_tls = os.getenv("THINGSBOARD_VERIFY_TLS", "true").lower() == "true"
 
-        async with httpx.AsyncClient() as client:
+        async with httpx.AsyncClient(verify=verify_tls) as client:
             try:
                 response = await client.get(url, headers=headers, params=params)
                 response.raise_for_status()
@@ -54,7 +56,10 @@ class ThingsboardClient:
             }
             
             THINGSBOARD_API_BASE = os.getenv("THINGSBOARD_API_BASE", None)
-            with httpx.Client() as client:
+            
+            verify_tls = os.getenv("THINGSBOARD_VERIFY_TLS", "true").lower() == "true"
+            
+            with httpx.Client(verify=verify_tls) as client:
                 response = client.post(f"{THINGSBOARD_API_BASE}/auth/login", json=data)
                 response.raise_for_status()
                 cls._auth_token = response.json()["token"]

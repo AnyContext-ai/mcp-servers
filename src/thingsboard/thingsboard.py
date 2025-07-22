@@ -15,6 +15,7 @@ load_dotenv()
 THINGSBOARD_API_BASE = os.getenv("THINGSBOARD_API_BASE", None)
 THINGSBOARD_USERNAME = os.getenv("THINGSBOARD_USERNAME", None)
 THINGSBOARD_PASSWORD = os.getenv("THINGSBOARD_PASSWORD", None)
+THINGSBOARD_VERIFY_TLS = os.getenv("THINGSBOARD_VERIFY_TLS", "true").lower() == "true"
 
 
 if __name__ == "__main__":
