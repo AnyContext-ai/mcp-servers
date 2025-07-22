@@ -8,6 +8,8 @@ An MCP (Model Context Protocol) server that provides tools for searching and und
 - **Detailed Endpoint Information**: Get comprehensive details about specific API endpoints including parameters, request bodies, and responses
 - **Tag-based Organization**: Browse endpoints by their functional categories (tags)
 - **Schema Information**: Get detailed information about data models and schemas
+- **Response Models**: Get detailed response model information with full schema structure for successful API calls (200 OK) using automatic JSON Schema reference resolution
+- **Response Examples**: View example responses from the OpenAPI specification or generated examples based on schema definitions to understand expected data formats
 - **API Overview**: Get general information about the ThingsBoard API including statistics
 
 ## Available Tools
@@ -25,7 +27,7 @@ search_api_endpoints(query="device", limit=5)
 ```
 
 ### 2. `get_endpoint_details`
-Get detailed information about a specific API endpoint.
+Get comprehensive information about a specific API endpoint including full response model structure.
 
 **Parameters:**
 - `path` (string): The API path (e.g., '/api/device')
@@ -124,6 +126,12 @@ get_tag_endpoints(tag_name="device-controller")
 ```python
 # Get information about the Device schema
 get_schema_info(schema_name="Device")
+```
+
+### Getting Detailed Endpoint Information with Response Models
+```python
+# Get comprehensive endpoint details including full response model structure
+get_endpoint_details(path="/api/device", method="GET")
 ```
 
 ## API Categories (Tags)

@@ -8,31 +8,18 @@ the ThingsBoard API effectively.
 """
 
 import json
-import os
-import re
 from pathlib import Path
 from typing import Dict, List, Optional, Any
-from urllib.parse import urlparse
 
+import jsonref
 from mcp.server.fastmcp import FastMCP
-from mcp.server.models import InitializationOptions
-from mcp.server.stdio import stdio_server
 from mcp.types import (
-    CallToolRequest,
     CallToolResult,
-    ListToolsRequest,
-    ListToolsResult,
-    Tool,
     TextContent,
-    ImageContent,
-    EmbeddedResource,
 )
-import pydantic
 
 
 class ThingsBoardAPIDocs:
-    """Main class for handling ThingsBoard API documentation operations."""
-    
     def __init__(self, openapi_spec_path: str = "openapi-spec.json"):
         """Initialize with the OpenAPI specification file."""
         self.spec_path = Path(openapi_spec_path)
@@ -40,12 +27,16 @@ class ThingsBoardAPIDocs:
         self._build_search_index()
     
     def _load_openapi_spec(self) -> Dict[str, Any]:
-        """Load the OpenAPI specification from file."""
+        """Load the OpenAPI specification from file with resolved references."""
         if not self.spec_path.exists():
             raise FileNotFoundError(f"OpenAPI specification not found: {self.spec_path}")
         
         with open(self.spec_path, 'r', encoding='utf-8') as f:
-            return json.load(f)
+            spec = json.load(f)
+        
+        # Resolve all $ref references using jsonref
+        full_spec = jsonref.replace_refs(spec)
+        return full_spec
     
     def _build_search_index(self):
         """Build a search index for quick lookups."""
@@ -71,6 +62,8 @@ class ThingsBoardAPIDocs:
         # Index schemas
         for schema_name, schema in self.spec.get('components', {}).get('schemas', {}).items():
             self.schemas[schema_name] = schema
+        
+
     
     def search_endpoints(self, query: str, limit: int = 10) -> List[Dict[str, Any]]:
         """Search for endpoints based on query."""
@@ -153,13 +146,182 @@ class ThingsBoardAPIDocs:
             'total_tags': len(self.tags),
             'total_schemas': len(self.schemas)
         }
+    
+
+    
+    def _extract_response_schema(self, response_content: Dict[str, Any]) -> Dict[str, Any]:
+        """Extract and format response schema information."""
+        schema_info = {}
+        
+        for content_type, content_details in response_content.items():
+            if 'schema' in content_details:
+                schema = content_details['schema']
+                schema_info[content_type] = self._format_schema(schema)
+        
+        return schema_info
+    
+    def _extract_response_examples(self, response_content: Dict[str, Any]) -> Dict[str, Any]:
+        """Extract and format response examples."""
+        examples_info = {}
+        
+        for content_type, content_details in response_content.items():
+            # Check for direct example
+            if 'example' in content_details:
+                examples_info[content_type] = {
+                    'type': 'direct',
+                    'value': content_details['example']
+                }
+            # Check for examples object
+            elif 'examples' in content_details:
+                examples_info[content_type] = {
+                    'type': 'named',
+                    'examples': content_details['examples']
+                }
+            # Generate example from schema if no examples provided
+            elif 'schema' in content_details:
+                schema = content_details['schema']
+                generated_example = self._generate_example_from_schema(schema)
+                if generated_example is not None:
+                    examples_info[content_type] = {
+                        'type': 'generated',
+                        'value': generated_example
+                    }
+        
+        return examples_info
+    
+    def _generate_example_from_schema(self, schema: Dict[str, Any]) -> Optional[Dict[str, Any]]:
+        """Generate an example response from schema definition."""
+        if not schema:
+            return None
+        
+        schema_type = schema.get('type', 'object')
+        
+        if schema_type == 'object':
+            properties = schema.get('properties', {})
+            if not properties:
+                return {}
+            
+            example = {}
+            for prop_name, prop_schema in properties.items():
+                prop_example = self._generate_example_from_schema(prop_schema)
+                if prop_example is not None:
+                    example[prop_name] = prop_example
+            
+            return example if example else None
+        
+        elif schema_type == 'array':
+            items = schema.get('items', {})
+            item_example = self._generate_example_from_schema(items)
+            if item_example is not None:
+                return [item_example]
+            return []
+        
+        else:
+            # For primitive types, use the example if available
+            if 'example' in schema:
+                return schema['example']
+            else:
+                # Generate default examples for common types
+                if schema_type == 'string':
+                    return "example_string"
+                elif schema_type == 'integer':
+                    return 0
+                elif schema_type == 'number':
+                    return 0.0
+                elif schema_type == 'boolean':
+                    return False
+                else:
+                    return None
+    
+    def _format_schema(self, schema: Dict[str, Any], indent: int = 0, max_depth: int = 3) -> str:
+        """Format a schema for display with full details using resolved references."""
+        if not schema:
+            return "N/A"
+        
+        # Prevent infinite recursion
+        if indent > max_depth:
+            return "... (max depth reached)"
+        
+        schema_type = schema.get('type', 'object')
+        description = schema.get('description', '')
+        
+        # Handle different schema types
+        if schema_type == 'object':
+            properties = schema.get('properties', {})
+            required = schema.get('required', [])
+            
+            if not properties:
+                return f"object{': ' + description if description else ''}"
+            
+            formatted = f"object{': ' + description if description else ''}\n"
+            for prop_name, prop_schema in properties.items():
+                is_required = prop_name in required
+                prop_desc = prop_schema.get('description', '')
+                
+                # Get the property type
+                prop_type = self._get_schema_type(prop_schema)
+                
+                # If it's an object with properties or array, include its details
+                if prop_schema.get('type') == 'object' and 'properties' in prop_schema:
+                    prop_details = self._format_schema(prop_schema, indent + 1, max_depth)
+                    if prop_details and prop_details != "N/A":
+                        prop_type += f"\n{'  ' * (indent + 2)}{prop_details}"
+                elif prop_schema.get('type') == 'array':
+                    prop_details = self._format_schema(prop_schema, indent + 1, max_depth)
+                    if prop_details and prop_details != "N/A":
+                        prop_type += f"\n{'  ' * (indent + 2)}{prop_details}"
+                
+                formatted += f"{'  ' * (indent + 1)}• {prop_name} ({prop_type}){' *' if is_required else ''}{': ' + prop_desc if prop_desc else ''}\n"
+            
+            return formatted.rstrip()
+        
+        elif schema_type == 'array':
+            items = schema.get('items', {})
+            item_type = self._get_schema_type(items)
+            
+            # If the array items are objects with properties, include their details
+            # Handle both explicit 'object' type and resolved objects with properties but no type
+            if (items.get('type') == 'object' or (items.get('type') is None and 'properties' in items)) and 'properties' in items:
+                item_details = self._format_schema(items, indent + 1, max_depth)
+                return f"array of {item_type}{': ' + description if description else ''}\n{'  ' * (indent + 1)}{item_details}"
+            elif items.get('type') == 'array':
+                item_details = self._format_schema(items, indent + 1, max_depth)
+                return f"array of {item_type}{': ' + description if description else ''}\n{'  ' * (indent + 1)}{item_details}"
+            else:
+                return f"array of {item_type}{': ' + description if description else ''}"
+        
+        else:
+            return f"{schema_type}{': ' + description if description else ''}"
+    
+    def _get_schema_type(self, schema: Dict[str, Any]) -> str:
+        """Get the type of a schema."""
+        if not schema:
+            return "unknown"
+        
+        schema_type = schema.get('type', 'object')
+        
+        if schema_type == 'array':
+            items = schema.get('items', {})
+            item_type = self._get_schema_type(items)
+            return f"array of {item_type}"
+        
+        elif schema_type == 'object' or (schema_type is None and 'properties' in schema):
+            # For resolved objects, try to provide a more descriptive name
+            if 'properties' in schema and len(schema['properties']) > 0:
+                # This is a complex object with properties
+                return "object"
+            else:
+                return "object"
+        
+        else:
+            return schema_type
 
 
 # Initialize the API docs handler
 api_docs = ThingsBoardAPIDocs()
 
 # Create MCP server
-mcp = FastMCP("ThingsBoard API Documentation")
+mcp = FastMCP("ThingsBoard API Documentation", port=9000)
 
 
 @mcp.tool()
@@ -190,12 +352,23 @@ def search_api_endpoints(query: str, limit: int = 10) -> CallToolResult:
         # Format results
         formatted_results = []
         for result in results:
+            # Get response type information
+            response_types = []
+            for status_code, response in result.get('responses', {}).items():
+                if status_code.startswith('2'):  # Success responses
+                    if 'content' in response:
+                        for content_type in response['content'].keys():
+                            if content_type not in response_types:
+                                response_types.append(content_type)
+            
+            response_info = f" - **Response**: {', '.join(response_types)}" if response_types else ""
+            
             formatted_result = f"""
 **{result['endpoint']}**
 - **Summary**: {result['summary']}
 - **Description**: {result['description'][:200]}{'...' if len(result['description']) > 200 else ''}
 - **Tags**: {', '.join(result['tags'])}
-- **Operation ID**: {result['operationId']}
+- **Operation ID**: {result['operationId']}{response_info}
 """
             formatted_results.append(formatted_result)
         
@@ -218,6 +391,9 @@ def search_api_endpoints(query: str, limit: int = 10) -> CallToolResult:
                 )
             ]
         )
+
+
+
 
 
 @mcp.tool()
@@ -277,6 +453,36 @@ def get_endpoint_details(path: str, method: str = "GET") -> CallToolResult:
         for status_code, response in endpoint_data.get('responses', {}).items():
             result_text += f"""
 - {status_code}: {response.get('description', 'N/A')}"""
+            
+            # Add response schema and examples information
+            if 'content' in response:
+                for content_type, content_details in response['content'].items():
+                    # Add schema information only for 200 OK responses
+                    if status_code == "200" and 'schema' in content_details:
+                        schema = content_details['schema']
+                        formatted_schema = api_docs._format_schema(schema)
+                        result_text += f"""
+  **Response Schema ({content_type})**: {formatted_schema}"""
+                    
+                    # Add examples information only for 200 OK responses
+                    if status_code == "200":
+                        examples_info = api_docs._extract_response_examples({content_type: content_details})
+                        if content_type in examples_info:
+                            example_data = examples_info[content_type]
+                            if example_data['type'] == 'direct':
+                                result_text += f"""
+  **Response Example ({content_type})**: {json.dumps(example_data['value'], indent=2)}"""
+                            elif example_data['type'] == 'named':
+                                result_text += f"""
+  **Response Examples ({content_type})**:"""
+                                for example_name, example_details in example_data['examples'].items():
+                                    summary = example_details.get('summary', example_name)
+                                    value = example_details.get('value', {})
+                                    result_text += f"""
+    - {summary}: {json.dumps(value, indent=4)}"""
+                            elif example_data['type'] == 'generated':
+                                result_text += f"""
+  **Example Response ({content_type})**: {json.dumps(example_data['value'], indent=2)}"""
         
         return CallToolResult(
             content=[
@@ -456,6 +662,8 @@ def get_schema_info(schema_name: str) -> CallToolResult:
         )
 
 
+
+
 @mcp.tool()
 def get_api_info() -> CallToolResult:
     """
@@ -478,13 +686,7 @@ def get_api_info() -> CallToolResult:
 - Total Endpoints: {info['total_endpoints']}
 - Total Tags: {info['total_tags']}
 - Total Schemas: {info['total_schemas']}
-
-**Servers**:"""
-        
-        for server in info['servers']:
-            result_text += f"""
-- {server.get('url', 'N/A')} - {server.get('description', 'No description')}"""
-        
+"""
         return CallToolResult(
             content=[
                 TextContent(
