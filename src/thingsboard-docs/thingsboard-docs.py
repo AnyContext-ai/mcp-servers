@@ -68,6 +68,8 @@ class ThingsBoardAPIDocs:
     def search_endpoints(self, query: str, limit: int = 10) -> List[Dict[str, Any]]:
         """Search for endpoints based on query."""
         query_lower = query.lower()
+        # Split query into individual keywords
+        keywords = [kw.strip() for kw in query_lower.split() if kw.strip()]
         results = []
         
         for endpoint_key, endpoint_data in self.endpoints.items():
@@ -83,25 +85,63 @@ class ThingsBoardAPIDocs:
             
             searchable_text = ' '.join(searchable_text).lower()
             
-            if query_lower in searchable_text:
-                results.append({
-                    'endpoint': endpoint_key,
-                    'path': endpoint_data['path'],
-                    'method': endpoint_data['method'],
-                    'summary': details.get('summary', ''),
-                    'description': details.get('description', ''),
-                    'tags': details.get('tags', []),
-                    'operationId': details.get('operationId', ''),
-                    'parameters': details.get('parameters', []),
-                    'requestBody': details.get('requestBody', {}),
-                    'responses': details.get('responses', {})
-                })
+            # Check if at least one keyword is present in the searchable text
+            if keywords:
+                # Count how many keywords match
+                keyword_matches = sum(1 for keyword in keywords if keyword in searchable_text)
+                if keyword_matches > 0:
+                    results.append({
+                        'endpoint': endpoint_key,
+                        'path': endpoint_data['path'],
+                        'method': endpoint_data['method'],
+                        'summary': details.get('summary', ''),
+                        'description': details.get('description', ''),
+                        'tags': details.get('tags', []),
+                        'operationId': details.get('operationId', ''),
+                        'parameters': details.get('parameters', []),
+                        'requestBody': details.get('requestBody', {}),
+                        'responses': details.get('responses', {}),
+                        'keyword_matches': keyword_matches  # Store match count for sorting
+                    })
+            else:
+                # If no keywords, fall back to exact substring match
+                if query_lower in searchable_text:
+                    results.append({
+                        'endpoint': endpoint_key,
+                        'path': endpoint_data['path'],
+                        'method': endpoint_data['method'],
+                        'summary': details.get('summary', ''),
+                        'description': details.get('description', ''),
+                        'tags': details.get('tags', []),
+                        'operationId': details.get('operationId', ''),
+                        'parameters': details.get('parameters', []),
+                        'requestBody': details.get('requestBody', {}),
+                        'responses': details.get('responses', {}),
+                        'keyword_matches': 1  # Single match for exact substring
+                    })
         
-        # Sort by relevance (exact matches first)
-        results.sort(key=lambda x: (
-            query_lower not in x['summary'].lower(),
-            query_lower not in x['description'].lower()
-        ))
+        # Sort by relevance (endpoints matching more keywords first, then by position in summary/description)
+        def relevance_score(result):
+            summary_lower = result['summary'].lower()
+            desc_lower = result['description'].lower()
+            
+            # Count how many keywords match in summary and description
+            summary_matches = sum(1 for keyword in keywords if keyword in summary_lower)
+            desc_matches = sum(1 for keyword in keywords if keyword in desc_lower)
+            
+            # Primary sort: total keyword matches (descending)
+            # Secondary sort: matches in summary (descending)
+            # Tertiary sort: matches in description (descending)
+            return (-result['keyword_matches'], -summary_matches, -desc_matches)
+        
+        if keywords:
+            results.sort(key=relevance_score)
+        else:
+            # Fall back to original sorting for exact substring matches
+            results.sort(key=lambda x: (
+                query_lower not in x['summary'].lower(),
+                query_lower not in x['description'].lower()
+            ))
         
         return results[:limit]
     
