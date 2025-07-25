@@ -31,7 +31,12 @@ source .venv/bin/activate
 
 Create .env file: `cp .env.example .env`
 
-Add the environment variables to allow the MCP server to connect to Thingsboard.
+Add the environment variables to allow the MCP server to connect to Thingsboard:
+
+- `THINGSBOARD_API_BASE`: The base URL of your ThingsBoard instance
+- `THINGSBOARD_USERNAME`: Your ThingsBoard username
+- `THINGSBOARD_PASSWORD`: Your ThingsBoard password
+- `THINGSBOARD_VERIFY_TLS`: Whether to verify TLS certificates (default: "true"). Set to "false" to disable certificate verification for self-signed certificates or development environments.
 
 
 ## Install dependencies
