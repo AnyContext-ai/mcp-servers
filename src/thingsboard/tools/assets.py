@@ -1,10 +1,10 @@
-from resources.mcp_server import mcp
+from resources.mcp_server import mcp, CallToolResult, TextContent
 from typing import Any
 from resources.thingsboard_client import ThingsboardClient
-from utils.helpers import filter_entity_information
+from utils.helpers import filter_entity_information, remove_null_values
 
 @mcp.tool()
-async def get_tenant_assets(page: int = 0, page_size: int = 10) -> Any:
+async def get_tenant_assets(page: int = 0, page_size: int = 10) -> CallToolResult:
     """Retrieve a paginated list of IoT assets from ThingsBoard with essential information only.
     
     Use this tool when you need to:
@@ -34,22 +34,86 @@ async def get_tenant_assets(page: int = 0, page_size: int = 10) -> Any:
         To get second page of 10 assets: page=1, page_size=10
         To get all assets (if less than 50): page=0, page_size=50
     """
-    endpoint = "tenant/assets"
-    params = {"page": page, "pageSize": page_size}
-    response = await ThingsboardClient.make_thingsboard_request(endpoint, params)
-    
-    # Filter the response to include only essential fields
-    if "data" in response and isinstance(response["data"], list):
-        filtered_assets = []
-        for asset in response["data"]:
-            filtered_asset = filter_entity_information(asset)
-            filtered_assets.append(filtered_asset)
+    try:
+        endpoint = "tenant/assets"
+        params = {"page": page, "pageSize": page_size}
+        response = await ThingsboardClient.make_thingsboard_request(endpoint, params)
         
-        return {
-            "data": filtered_assets,
-            "totalElements": response.get("totalElements"),
-            "totalPages": response.get("totalPages"),
-            "hasNext": response.get("hasNext")
-        }
+        # Filter the response to include only essential fields
+        if "data" in response and isinstance(response["data"], list):
+            filtered_assets = []
+            for asset in response["data"]:
+                filtered_asset = filter_entity_information(asset)
+                filtered_assets.append(filtered_asset)
+            
+            # Format the response for LLM consumption
+            formatted_assets = []
+            for asset in filtered_assets:
+                asset_info = []
+                if asset.get('name'):
+                    asset_info.append(f"**Asset: {asset['name']}**")
+                else:
+                    asset_info.append("**Asset: Unnamed**")
+                
+                if asset.get('id'):
+                    asset_info.append(f"- **ID**: {asset['id']}")
+                if asset.get('type'):
+                    asset_info.append(f"- **Type**: {asset['type']}")
+                if asset.get('label'):
+                    asset_info.append(f"- **Label**: {asset['label']}")
+                if asset.get('profileId'):
+                    asset_info.append(f"- **Profile ID**: {asset['profileId']}")
+                
+                formatted_assets.append("\n".join(asset_info))
+            
+            # Filter pagination info to remove null values
+            pagination_data = remove_null_values({
+                "totalElements": response.get('totalElements'),
+                "totalPages": response.get('totalPages'),
+                "hasNext": response.get('hasNext')
+            })
+            
+            pagination_info = []
+            if pagination_data:
+                pagination_info.append("**Pagination Information:**")
+                if pagination_data.get('totalElements') is not None:
+                    pagination_info.append(f"- **Total Assets**: {pagination_data['totalElements']}")
+                if pagination_data.get('totalPages') is not None:
+                    pagination_info.append(f"- **Total Pages**: {pagination_data['totalPages']}")
+                pagination_info.append(f"- **Current Page**: {page + 1}")
+                if pagination_data.get('hasNext') is not None:
+                    pagination_info.append(f"- **Has Next Page**: {pagination_data['hasNext']}")
+            
+            result_text = f"Found {len(filtered_assets)} assets (page {page + 1}):\n\n" + \
+                         "\n".join(formatted_assets)
+            
+            if pagination_info:
+                result_text += "\n\n" + "\n".join(pagination_info)
+            
+            return CallToolResult(
+                content=[
+                    TextContent(
+                        type="text",
+                        text=result_text
+                    )
+                ]
+            )
+        
+        return CallToolResult(
+            content=[
+                TextContent(
+                    type="text",
+                    text=f"Unexpected response format: {response}"
+                )
+            ]
+        )
     
-    return response
+    except Exception as e:
+        return CallToolResult(
+            content=[
+                TextContent(
+                    type="text",
+                    text=f"Error retrieving assets: {str(e)}"
+                )
+            ]
+        )
