@@ -7,6 +7,7 @@ import tools.devices
 import tools.telemetry
 import tools.assets
 import tools.relations
+import tools.alarm_rules
 from resources.thingsboard_client import ThingsboardClient
 
 load_dotenv()
