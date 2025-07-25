@@ -68,6 +68,8 @@ class ThingsBoardAPIDocs:
     def search_endpoints(self, query: str, limit: int = 10) -> List[Dict[str, Any]]:
         """Search for endpoints based on query."""
         query_lower = query.lower()
+        # Split query into individual keywords
+        keywords = [kw.strip() for kw in query_lower.split() if kw.strip()]
         results = []
         
         for endpoint_key, endpoint_data in self.endpoints.items():
@@ -83,25 +85,63 @@ class ThingsBoardAPIDocs:
             
             searchable_text = ' '.join(searchable_text).lower()
             
-            if query_lower in searchable_text:
-                results.append({
-                    'endpoint': endpoint_key,
-                    'path': endpoint_data['path'],
-                    'method': endpoint_data['method'],
-                    'summary': details.get('summary', ''),
-                    'description': details.get('description', ''),
-                    'tags': details.get('tags', []),
-                    'operationId': details.get('operationId', ''),
-                    'parameters': details.get('parameters', []),
-                    'requestBody': details.get('requestBody', {}),
-                    'responses': details.get('responses', {})
-                })
+            # Check if at least one keyword is present in the searchable text
+            if keywords:
+                # Count how many keywords match
+                keyword_matches = sum(1 for keyword in keywords if keyword in searchable_text)
+                if keyword_matches > 0:
+                    results.append({
+                        'endpoint': endpoint_key,
+                        'path': endpoint_data['path'],
+                        'method': endpoint_data['method'],
+                        'summary': details.get('summary', ''),
+                        'description': details.get('description', ''),
+                        'tags': details.get('tags', []),
+                        'operationId': details.get('operationId', ''),
+                        'parameters': details.get('parameters', []),
+                        'requestBody': details.get('requestBody', {}),
+                        'responses': details.get('responses', {}),
+                        'keyword_matches': keyword_matches  # Store match count for sorting
+                    })
+            else:
+                # If no keywords, fall back to exact substring match
+                if query_lower in searchable_text:
+                    results.append({
+                        'endpoint': endpoint_key,
+                        'path': endpoint_data['path'],
+                        'method': endpoint_data['method'],
+                        'summary': details.get('summary', ''),
+                        'description': details.get('description', ''),
+                        'tags': details.get('tags', []),
+                        'operationId': details.get('operationId', ''),
+                        'parameters': details.get('parameters', []),
+                        'requestBody': details.get('requestBody', {}),
+                        'responses': details.get('responses', {}),
+                        'keyword_matches': 1  # Single match for exact substring
+                    })
         
-        # Sort by relevance (exact matches first)
-        results.sort(key=lambda x: (
-            query_lower not in x['summary'].lower(),
-            query_lower not in x['description'].lower()
-        ))
+        # Sort by relevance (endpoints matching more keywords first, then by position in summary/description)
+        def relevance_score(result):
+            summary_lower = result['summary'].lower()
+            desc_lower = result['description'].lower()
+            
+            # Count how many keywords match in summary and description
+            summary_matches = sum(1 for keyword in keywords if keyword in summary_lower)
+            desc_matches = sum(1 for keyword in keywords if keyword in desc_lower)
+            
+            # Primary sort: total keyword matches (descending)
+            # Secondary sort: matches in summary (descending)
+            # Tertiary sort: matches in description (descending)
+            return (-result['keyword_matches'], -summary_matches, -desc_matches)
+        
+        if keywords:
+            results.sort(key=relevance_score)
+        else:
+            # Fall back to original sorting for exact substring matches
+            results.sort(key=lambda x: (
+                query_lower not in x['summary'].lower(),
+                query_lower not in x['description'].lower()
+            ))
         
         return results[:limit]
     
@@ -315,6 +355,33 @@ class ThingsBoardAPIDocs:
         
         else:
             return schema_type
+    
+    def _safe_json_serialize(self, obj: Any, max_depth: int = 3, current_depth: int = 0) -> str:
+        """Safely serialize an object to JSON, handling non-serializable types."""
+        if current_depth > max_depth:
+            return "... (max depth reached)"
+        
+        try:
+            return json.dumps(obj, indent=2, default=str)
+        except (TypeError, ValueError):
+            # If direct serialization fails, try to extract key information
+            if isinstance(obj, dict):
+                simplified = {}
+                for key, value in obj.items():
+                    if isinstance(value, (str, int, float, bool, type(None))):
+                        simplified[key] = value
+                    elif isinstance(value, dict):
+                        simplified[key] = self._safe_json_serialize(value, max_depth, current_depth + 1)
+                    elif isinstance(value, list):
+                        simplified[key] = [self._safe_json_serialize(item, max_depth, current_depth + 1) if isinstance(item, dict) else str(item) for item in value[:3]]  # Limit list items
+                    else:
+                        simplified[key] = str(value)
+                return json.dumps(simplified, indent=2)
+            elif isinstance(obj, list):
+                simplified = [self._safe_json_serialize(item, max_depth, current_depth + 1) if isinstance(item, dict) else str(item) for item in obj[:3]]  # Limit list items
+                return json.dumps(simplified, indent=2)
+            else:
+                return str(obj)
 
 
 # Initialize the API docs handler
@@ -444,7 +511,7 @@ def get_endpoint_details(path: str, method: str = "GET") -> CallToolResult:
         if endpoint_data.get('requestBody'):
             result_text += f"""
 
-**Request Body**: {json.dumps(endpoint_data['requestBody'], indent=2)}"""
+**Request Body**: {api_docs._safe_json_serialize(endpoint_data['requestBody'])}"""
         
         result_text += f"""
 
@@ -471,7 +538,7 @@ def get_endpoint_details(path: str, method: str = "GET") -> CallToolResult:
                             example_data = examples_info[content_type]
                             if example_data['type'] == 'direct':
                                 result_text += f"""
-  **Response Example ({content_type})**: {json.dumps(example_data['value'], indent=2)}"""
+  **Response Example ({content_type})**: {api_docs._safe_json_serialize(example_data['value'])}"""
                             elif example_data['type'] == 'named':
                                 result_text += f"""
   **Response Examples ({content_type})**:"""
@@ -479,10 +546,10 @@ def get_endpoint_details(path: str, method: str = "GET") -> CallToolResult:
                                     summary = example_details.get('summary', example_name)
                                     value = example_details.get('value', {})
                                     result_text += f"""
-    - {summary}: {json.dumps(value, indent=4)}"""
+    - {summary}: {api_docs._safe_json_serialize(value)}"""
                             elif example_data['type'] == 'generated':
                                 result_text += f"""
-  **Example Response ({content_type})**: {json.dumps(example_data['value'], indent=2)}"""
+  **Example Response ({content_type})**: {api_docs._safe_json_serialize(example_data['value'])}"""
         
         return CallToolResult(
             content=[
