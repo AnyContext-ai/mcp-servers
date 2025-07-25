@@ -1,0 +1,13 @@
+[project]
+name = "thingsboard-docs"
+version = "0.1.0"
+description = "MCP server for searching ThingsBoard API documentation using OpenAPI specification"
+readme = "README.md"
+requires-python = ">=3.10"
+dependencies = [
+    "mcp[cli]>=1.9.4",
+    "jsonref>=0.3.0",
+]
+
+[project.scripts]
+thingsboard-docs = "thingsboard_docs:main"
