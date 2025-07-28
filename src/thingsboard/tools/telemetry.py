@@ -1,9 +1,14 @@
 from resources.mcp_server import mcp
-from typing import Any
+from mcp.server.fastmcp import Image
 from resources.thingsboard_client import ThingsboardClient
+from utils.helpers import remove_null_values, format_timestamp_range, convert_timestamps_to_datetime, format_timestamp_for_display, get_available_telemetry_keys
+import plotly.graph_objects as go
+from typing import Literal
+
+MAX_DATA_POINTS_DISPLAY = 20
 
 @mcp.tool()
-async def get_historic_telemetry(id: str, entity_type: str, keys: str, startTs: int, endTs: int) -> Any:
+async def get_historic_telemetry(id: str, entity_type: Literal["DEVICE", "ASSET"], keys: str, startTs: int, endTs: int) -> str:
     """Retrieve historical time-series data for a ThingsBoard device or asset within a specified time range.
     
     Use this tool when you need to:
@@ -17,10 +22,14 @@ async def get_historic_telemetry(id: str, entity_type: str, keys: str, startTs: 
     This tool returns raw time-series data points with timestamps and values for each requested key.
     The data is returned in chronological order within the specified time range.
     
+    **Note**: For large datasets (>20 data points), the response shows a sample of the data.
+    For complete data analysis, consider using get_telemetry_chart() for visual analysis
+    or get_average_telemetry() for statistical summaries.
+    
     Args:
         id (str): The unique identifier of the device or asset. Get this from get_tenant_devices_filtered() if not provided.
                  Format: UUID string (e.g., "123e4567-e89b-12d3-a456-426614174000")
-        entity_type (str): Type of entity - must be either "DEVICE" or "ASSET" (case-sensitive).
+        entity_type (Literal["DEVICE", "ASSET"]): Type of entity - must be either "DEVICE" or "ASSET" (case-sensitive).
         keys (str): Comma-separated list of telemetry keys to retrieve (e.g., "temperature,humidity,pressure").
         startTs (int): Start timestamp in milliseconds UTC (e.g., 1704067200000 for 2024-01-01 00:00:00 UTC).
                       Must be less than endTs.
@@ -39,12 +48,118 @@ async def get_historic_telemetry(id: str, entity_type: str, keys: str, startTs: 
         endTs: 1704153600000    # 2024-01-02 00:00:00 UTC
         entity_type: "DEVICE"
     """
-    endpoint = f"plugins/telemetry/{entity_type}/{id}/values/timeseries"
-    params = {"keys": keys, "startTs": startTs, "endTs": endTs}
-    return await ThingsboardClient.make_thingsboard_request(endpoint, params)
+    try:
+        endpoint = f"plugins/telemetry/{entity_type}/{id}/values/timeseries"
+        params = {"keys": keys, "startTs": startTs, "endTs": endTs}
+        response = await ThingsboardClient.make_thingsboard_request(endpoint, params)
+        
+
+        
+        # Check if we have any valid data with actual data points
+        has_valid_data = False
+        requested_keys = [key.strip() for key in keys.split(',') if key.strip()]
+        
+        # Check the original response first
+        if response and isinstance(response, dict):
+            for key, data_points in response.items():
+                if isinstance(data_points, list) and data_points:
+                    has_valid_data = True
+                    break
+        
+        if not has_valid_data:
+            # We have a response but no valid data - check what keys are available
+            available_keys = await get_available_telemetry_keys(entity_type, id)
+            
+            # Determine what happened
+            missing_keys = [key for key in requested_keys if key not in available_keys]
+            existing_keys = [key for key in requested_keys if key in available_keys]
+            
+            error_message = f"No historical telemetry data found for {entity_type} {id}\n\n"
+            
+            if missing_keys:
+                error_message += f"**Missing Keys**: {', '.join(missing_keys)} (these keys don't exist for this {entity_type})\n"
+            
+            if existing_keys:
+                error_message += f"**Keys with No Data**: {', '.join(existing_keys)} (exist but have no data in the specified time range)\n"
+            
+            if available_keys:
+                error_message += f"\n**Available Telemetry Keys for this {entity_type}**:\n"
+                for key in available_keys:
+                    error_message += f"  - {key}\n"
+                
+                if missing_keys:
+                    error_message += f"\n**Suggestion**: Try using one or more of the available keys above."
+                elif existing_keys:
+                    error_message += f"\n**Suggestion**: Try a different time range or use other available keys."
+            else:
+                error_message += f"\n**Issue**: No telemetry keys found for this {entity_type}. This entity may not have any telemetry data configured."
+            
+            return error_message
+        
+        # Remove null values from the response for processing
+        cleaned_response = remove_null_values(response)
+        
+        # Format the response for LLM consumption
+        formatted_data = []
+        total_points = 0
+        
+        for key, data_points in cleaned_response.items():
+            if isinstance(data_points, list) and data_points:
+                # Limit the number of data points displayed
+                display_points = data_points[-MAX_DATA_POINTS_DISPLAY:] if len(data_points) > MAX_DATA_POINTS_DISPLAY else data_points
+                total_points += len(data_points)
+                
+                formatted_points = []
+                for point in display_points:
+                    ts = point.get('ts', 'N/A')
+                    value = point.get('value', 'N/A')
+                    formatted_ts = format_timestamp_for_display(ts) if ts != 'N/A' else 'N/A'
+                    formatted_points.append(f"    {formatted_ts}: {value}")
+                
+                if len(data_points) > MAX_DATA_POINTS_DISPLAY:
+                    formatted_points.append(f"    ... and {len(data_points) - MAX_DATA_POINTS_DISPLAY} more data points")
+                
+                formatted_data.append(f"**{key}** ({len(data_points)} data points):\n" + "\n".join(formatted_points))
+            else:
+                formatted_data.append(f"**{key}**: No data available")
+        
+        # Format time range info
+        time_range_info = format_timestamp_range(startTs, endTs)
+        
+        # Add guidance for large datasets
+        guidance_text = ""
+        if total_points > MAX_DATA_POINTS_DISPLAY:
+            guidance_text = f"""
+
+**Data Truncation Notice:**
+This response shows a sample of {total_points} total data points. To get more detailed data:
+
+**Option 1: Use get_telemetry_chart() for visual analysis**
+- Generate charts to see trends and patterns visually
+- Example: `get_telemetry_chart(id="{id}", entity_type="{entity_type}", keys="{keys}", startTs={startTs}, endTs={endTs})`
+
+**Option 2: Reduce time range for more granular data**
+- Use shorter time periods to get all data points
+- Example: Use 1-hour or 6-hour ranges instead of 24+ hours
+
+**Option 3: Use get_average_telemetry() for statistical summary**
+- Get min, max, average, and count statistics
+- Example: `get_average_telemetry(id="{id}", entity_type="{entity_type}", keys="{keys}", startTs={startTs}, endTs={endTs})`
+
+**Option 4: Request specific keys only**
+- Reduce the number of keys to get more data points per key
+- Example: Use "temperature" instead of "temperature,humidity,pressure"
+"""
+        
+        result_text = f"**Historical Telemetry Data:**\n{time_range_info}\n\n" + "\n".join(formatted_data) + guidance_text
+        
+        return result_text
+    
+    except Exception as e:
+        return f"Error retrieving historical telemetry: {str(e)}"
 
 @mcp.tool()
-async def get_average_telemetry(id: str, entity_type: str, keys: str, startTs: int, endTs: int) -> Any:
+async def get_average_telemetry(id: str, entity_type: Literal["DEVICE", "ASSET"], keys: str, startTs: int, endTs: int) -> str:
     """Calculate statistical averages for time-series data from a ThingsBoard device or asset.
     
     Use this tool when you need to:
@@ -62,7 +177,7 @@ async def get_average_telemetry(id: str, entity_type: str, keys: str, startTs: i
     Args:
         id (str): The unique identifier of the device or asset. Get this from get_tenant_devices_filtered() if not provided.
                  Format: UUID string (e.g., "123e4567-e89b-12d3-a456-426614174000")
-        entity_type (str): Type of entity - must be either "DEVICE" or "ASSET" (case-sensitive).
+        entity_type (Literal["DEVICE", "ASSET"]): Type of entity - must be either "DEVICE" or "ASSET" (case-sensitive).
         keys (str): Comma-separated list of telemetry keys to analyze (e.g., "temperature,humidity").
         startTs (int): Start timestamp in milliseconds UTC (e.g., 1704067200000 for 2024-01-01 00:00:00 UTC).
                       Must be less than endTs.
@@ -84,52 +199,124 @@ async def get_average_telemetry(id: str, entity_type: str, keys: str, startTs: i
         endTs: 1704153600000    # 2024-01-02 00:00:00 UTC
         entity_type: "DEVICE"
     """
-    endpoint = f"plugins/telemetry/{entity_type}/{id}/values/timeseries"
-    params = {"keys": keys, "startTs": startTs, "endTs": endTs}
-    response = await ThingsboardClient.make_thingsboard_request(endpoint, params)
-    
-    # Calculate averages for each key
-    averages = {}
-    
-    for key, data_points in response.items():
-        if isinstance(data_points, list) and data_points:
-            # Extract numeric values and calculate average
-            values = []
-            for point in data_points:
-                if isinstance(point, dict) and 'value' in point:
-                    try:
-                        # Convert string value to float
-                        value = float(point['value'])
-                        values.append(value)
-                    except (ValueError, TypeError):
-                        # Skip non-numeric values
-                        continue
+    try:
+        endpoint = f"plugins/telemetry/{entity_type}/{id}/values/timeseries"
+        params = {"keys": keys, "startTs": startTs, "endTs": endTs}
+        response = await ThingsboardClient.make_thingsboard_request(endpoint, params)
+        
+
+        
+        # Check if we have any valid data with actual data points
+        has_valid_data = False
+        requested_keys = [key.strip() for key in keys.split(',') if key.strip()]
+        
+        # Check the original response first
+        if response and isinstance(response, dict):
+            for key, data_points in response.items():
+                if isinstance(data_points, list) and data_points:
+                    has_valid_data = True
+                    break
+        
+        if not has_valid_data:
+            # We have a response but no valid data - check what keys are available
+            available_keys = await get_available_telemetry_keys(entity_type, id)
             
-            if values:
-                average = sum(values) / len(values)
-                averages[key] = {
-                    "average": average,
-                    "count": len(values),
-                    "min": min(values),
-                    "max": max(values)
-                }
+            # Determine what happened
+            missing_keys = [key for key in requested_keys if key not in available_keys]
+            existing_keys = [key for key in requested_keys if key in available_keys]
+            
+            error_message = f"No telemetry data found for {entity_type} {id} to calculate averages\n\n"
+            
+            if missing_keys:
+                error_message += f"**Missing Keys**: {', '.join(missing_keys)} (these keys don't exist for this {entity_type})\n"
+            
+            if existing_keys:
+                error_message += f"**Keys with No Data**: {', '.join(existing_keys)} (exist but have no data in the specified time range)\n"
+            
+            if available_keys:
+                error_message += f"\n**Available Telemetry Keys for this {entity_type}**:\n"
+                for key in available_keys:
+                    error_message += f"  - {key}\n"
+                
+                if missing_keys:
+                    error_message += f"\n**Suggestion**: Try using one or more of the available keys above."
+                elif existing_keys:
+                    error_message += f"\n**Suggestion**: Try a different time range or use other available keys."
+            else:
+                error_message += f"\n**Issue**: No telemetry keys found for this {entity_type}. This entity may not have any telemetry data configured."
+            
+            return error_message
+        
+        # Remove null values from the response for processing
+        cleaned_response = remove_null_values(response)
+        
+        # Calculate averages for each key
+        averages = {}
+        
+        for key, data_points in cleaned_response.items():
+            if isinstance(data_points, list) and data_points:
+                # Extract numeric values and calculate average
+                values = []
+                for point in data_points:
+                    if isinstance(point, dict) and 'value' in point:
+                        try:
+                            # Convert string value to float
+                            value = float(point['value'])
+                            values.append(value)
+                        except (ValueError, TypeError):
+                            # Skip non-numeric values
+                            continue
+                
+                if values:
+                    average = sum(values) / len(values)
+                    averages[key] = {
+                        "average": average,
+                        "count": len(values),
+                        "min": min(values),
+                        "max": max(values)
+                    }
+                else:
+                    averages[key] = {
+                        "average": None,
+                        "count": 0,
+                        "error": "No valid numeric values found"
+                    }
             else:
                 averages[key] = {
                     "average": None,
                     "count": 0,
-                    "error": "No valid numeric values found"
+                    "error": "Invalid data format"
                 }
-        else:
-            averages[key] = {
-                "average": None,
-                "count": 0,
-                "error": "Invalid data format"
-            }
+        
+        # Remove null values from averages
+        cleaned_averages = remove_null_values(averages)
+        
+        # Format the response for LLM consumption
+        formatted_stats = []
+        time_range_info = f"""
+**Time Range**: {startTs} to {endTs}
+**Entity**: {entity_type} {id}"""
+        
+        for key, stats in cleaned_averages.items():
+            if stats.get("error"):
+                formatted_stats.append(f"**{key}**: {stats['error']}")
+            else:
+                formatted_stats.append(f"""
+**{key}**:
+  - **Average**: {stats['average']:.2f}
+  - **Count**: {stats['count']} data points
+  - **Min**: {stats['min']:.2f}
+  - **Max**: {stats['max']:.2f}""")
+        
+        result_text = f"**Telemetry Statistics:**\n{time_range_info}\n\n" + "\n".join(formatted_stats)
+        
+        return result_text
     
-    return averages
+    except Exception as e:
+        return f"Error calculating telemetry averages: {str(e)}"
 
 @mcp.tool()
-async def get_latest_telemetry(id: str, entity_type: str, keys: str = "") -> Any:
+async def get_latest_telemetry(id: str, entity_type: Literal["DEVICE", "ASSET"], keys: str = "") -> str:
     """Retrieve the most recent telemetry data for a ThingsBoard device or asset.
     
     Use this tool when you need to:
@@ -147,7 +334,7 @@ async def get_latest_telemetry(id: str, entity_type: str, keys: str = "") -> Any
     Args:
         id (str): The unique identifier of the device or asset. Get this from get_tenant_devices_filtered().
                  Format: UUID string (e.g., "123e4567-e89b-12d3-a456-426614174000")
-        entity_type (str): Type of entity - must be either "DEVICE" or "ASSET" (case-sensitive).
+        entity_type (Literal["DEVICE", "ASSET"]): Type of entity - must be either "DEVICE" or "ASSET" (case-sensitive).
         keys (str): Comma-separated list of telemetry keys to retrieve (e.g., "temperature,humidity").
                    Leave empty or omit to get latest data for all available keys.
     
@@ -163,6 +350,309 @@ async def get_latest_telemetry(id: str, entity_type: str, keys: str = "") -> Any
         keys: ""  # Get all available keys
         entity_type: "DEVICE"
     """
-    endpoint = f"plugins/telemetry/{entity_type}/{id}/values/timeseries"
-    params = {"keys": keys} if keys else None
-    return await ThingsboardClient.make_thingsboard_request(endpoint, params)
+    try:
+        endpoint = f"plugins/telemetry/{entity_type}/{id}/values/timeseries"
+        params = {"keys": keys} if keys else None
+        response = await ThingsboardClient.make_thingsboard_request(endpoint, params)
+        
+        # Check if we have any valid data with actual data points
+        has_valid_data = False
+        requested_keys = []
+        if keys:
+            requested_keys = [key.strip() for key in keys.split(',') if key.strip()]
+        
+        # Check the original response first
+        if response and isinstance(response, dict):
+            for key, data_points in response.items():
+                if isinstance(data_points, list) and data_points:
+                    has_valid_data = True
+                    break
+        
+        if not has_valid_data:
+            # We have a response but no valid data - check what keys are available
+            available_keys = await get_available_telemetry_keys(entity_type, id)
+            
+            # Determine what happened
+            missing_keys = [key for key in requested_keys if key not in available_keys]
+            existing_keys = [key for key in requested_keys if key in available_keys]
+            
+            error_message = f"No latest telemetry data found for {entity_type} {id}\n\n"
+            
+            if missing_keys:
+                error_message += f"**Missing Keys**: {', '.join(missing_keys)} (these keys don't exist for this {entity_type})\n"
+            
+            if existing_keys:
+                error_message += f"**Keys with No Data**: {', '.join(existing_keys)} (exist but have no latest data)\n"
+            
+            if available_keys:
+                error_message += f"\n**Available Telemetry Keys for this {entity_type}**:\n"
+                for key in available_keys:
+                    error_message += f"  - {key}\n"
+                
+                if missing_keys:
+                    error_message += f"\n**Suggestion**: Try using one or more of the available keys above."
+                elif existing_keys:
+                    error_message += f"\n**Suggestion**: Try using other available keys or check device connectivity."
+            else:
+                error_message += f"\n**Issue**: No telemetry keys found for this {entity_type}. This entity may not have any telemetry data configured."
+            
+            return error_message
+        
+        # Remove null values from the response for processing
+        cleaned_response = remove_null_values(response)
+        
+        # Format the response for LLM consumption
+        formatted_data = []
+        
+        for key, data_points in cleaned_response.items():
+            if isinstance(data_points, list) and data_points:
+                # Get the most recent data point (last in the list)
+                latest_point = data_points[-1]
+                ts = latest_point.get('ts', 'N/A')
+                value = latest_point.get('value', 'N/A')
+                formatted_ts = format_timestamp_for_display(ts) if ts != 'N/A' else 'N/A'
+                formatted_data.append(f"**{key}**: {value} (at {formatted_ts})")
+            else:
+                formatted_data.append(f"**{key}**: No data available")
+        
+        entity_info = f"**Latest Telemetry for {entity_type} {id}:**"
+        result_text = f"{entity_info}\n\n" + "\n".join(formatted_data)
+        
+        return result_text
+    
+    except Exception as e:
+        return f"Error retrieving latest telemetry: {str(e)}"
+
+@mcp.tool()
+async def get_telemetry_chart(id: str, entity_type: Literal["DEVICE", "ASSET"], keys: str, startTs: int, endTs: int, chart_type: Literal["line", "scatter", "bar", "area"] = "line", width: int = 800, height: int = 600) -> Image:
+    """Generate a chart visualization of historical telemetry data for a ThingsBoard device or asset.
+    
+    Use this tool when you need to:
+    - Visualize time-series data trends and patterns
+    - Create charts for reports, dashboards, or presentations
+    - Analyze device performance over time with visual insights
+    - Compare multiple telemetry keys on the same chart
+    - Generate professional-looking data visualizations
+    - Share telemetry data in a more accessible format
+    
+    This tool retrieves historical telemetry data and generates a chart image showing
+    the data trends over time. Multiple telemetry keys can be plotted on the same chart
+    for easy comparison and analysis.
+    
+    Args:
+        id (str): The unique identifier of the device or asset. Get this from get_tenant_devices().
+                 Format: UUID string (e.g., "123e4567-e89b-12d3-a456-426614174000")
+        entity_type (Literal["DEVICE", "ASSET"]): Type of entity - must be either "DEVICE" or "ASSET" (case-sensitive).
+        keys (str): Comma-separated list of telemetry keys to visualize (e.g., "temperature,humidity,pressure").
+        startTs (int): Start timestamp in milliseconds UTC (e.g., 1704067200000 for 2024-01-01 00:00:00 UTC).
+                      Must be less than endTs.
+        endTs (int): End timestamp in milliseconds UTC (e.g., 1704153600000 for 2024-01-02 00:00:00 UTC).
+                    Must be greater than startTs.
+        chart_type (Literal["line", "scatter", "bar", "area"]): Type of chart to generate.
+                         Default: "line" (best for time-series data).
+        width (int): Chart width in pixels. Default: 800.
+        height (int): Chart height in pixels. Default: 600.
+    
+    Returns:
+        Chart image as base64-encoded PNG data along with summary statistics.
+        The chart shows telemetry data over time with proper axis labels and legends.
+    
+    Example usage:
+        keys: "temperature,humidity"
+        startTs: 1704067200000  # 2024-01-01 00:00:00 UTC
+        endTs: 1704153600000    # 2024-01-02 00:00:00 UTC
+        entity_type: "DEVICE"
+        chart_type: "line"
+    """
+    try:
+        # Validate chart type
+        valid_chart_types = ["line", "scatter", "bar", "area"]
+        if chart_type not in valid_chart_types:
+            raise ValueError(f"Invalid chart type '{chart_type}'. Valid types are: {', '.join(valid_chart_types)}")
+        
+        # Get telemetry data
+        endpoint = f"plugins/telemetry/{entity_type}/{id}/values/timeseries"
+        params = {"keys": keys, "startTs": startTs, "endTs": endTs}
+        response = await ThingsboardClient.make_thingsboard_request(endpoint, params)
+        
+        # Check if we have any valid data with actual data points
+        has_valid_data = False
+        requested_keys = [key.strip() for key in keys.split(',') if key.strip()]
+        
+        # Check the original response first
+        if response and isinstance(response, dict):
+            for key, data_points in response.items():
+                if isinstance(data_points, list) and data_points:
+                    has_valid_data = True
+                    break
+        
+        if not has_valid_data:
+            # We have a response but no valid data - check what keys are available
+            available_keys = await get_available_telemetry_keys(entity_type, id)
+            
+            # Determine what happened
+            missing_keys = [key for key in requested_keys if key not in available_keys]
+            existing_keys = [key for key in requested_keys if key in available_keys]
+            
+            error_message = f"No telemetry data found for {entity_type} {id} in the specified time range\n\n"
+            
+            if missing_keys:
+                error_message += f"**Missing Keys**: {', '.join(missing_keys)} (these keys don't exist for this {entity_type})\n"
+            
+            if existing_keys:
+                error_message += f"**Keys with No Data**: {', '.join(existing_keys)} (exist but have no data in the specified time range)\n"
+            
+            if available_keys:
+                error_message += f"\n**Available Telemetry Keys for this {entity_type}**:\n"
+                for key in available_keys:
+                    error_message += f"  - {key}\n"
+                
+                if missing_keys:
+                    error_message += f"\n**Suggestion**: Try using one or more of the available keys above."
+                elif existing_keys:
+                    error_message += f"\n**Suggestion**: Try a different time range or use other available keys."
+            else:
+                error_message += f"\n**Issue**: No telemetry keys found for this {entity_type}. This entity may not have any telemetry data configured."
+            
+            raise ValueError(error_message)
+        
+        # Remove null values from the response for processing
+        cleaned_response = remove_null_values(response)
+        
+        # Create the chart
+        fig = go.Figure()
+        
+        # Color palette for multiple keys
+        colors = ['#1f77b4', '#ff7f0e', '#2ca02c', '#d62728', '#9467bd', '#8c564b', '#e377c2', '#7f7f7f', '#bcbd22', '#17becf']
+        
+        for i, (key, data_points) in enumerate(cleaned_response.items()):
+            if isinstance(data_points, list) and data_points:
+                # Convert timestamps to datetime for better plotting
+                timestamps = []
+                values = []
+                
+                for point in data_points:
+                    ts = point.get('ts')
+                    value = point.get('value')
+                    if ts is not None and value is not None:
+                        timestamps.append(convert_timestamps_to_datetime(ts))
+                        values.append(value)
+                
+                if timestamps and values:
+                    color = colors[i % len(colors)]
+                    
+                    if chart_type == "line":
+                        fig.add_trace(
+                            go.Scatter(
+                                x=timestamps,
+                                y=values,
+                                mode='lines+markers',
+                                name=key,
+                                line=dict(color=color, width=2),
+                                marker=dict(size=4)
+                            )
+                        )
+                    elif chart_type == "scatter":
+                        fig.add_trace(
+                            go.Scatter(
+                                x=timestamps,
+                                y=values,
+                                mode='markers',
+                                name=key,
+                                marker=dict(color=color, size=6)
+                            )
+                        )
+                    elif chart_type == "bar":
+                        fig.add_trace(
+                            go.Bar(
+                                x=timestamps,
+                                y=values,
+                                name=key,
+                                marker_color=color
+                            )
+                        )
+                    elif chart_type == "area":
+                        fig.add_trace(
+                            go.Scatter(
+                                x=timestamps,
+                                y=values,
+                                mode='lines',
+                                fill='tonexty',
+                                name=key,
+                                line=dict(color=color, width=2)
+                            )
+                        )
+        
+        # Update layout
+        fig.update_layout(
+            title=f"{entity_type} Telemetry Chart ({chart_type.title()})",
+            xaxis_title="Time",
+            yaxis_title="Value",
+            width=width,
+            height=height,
+            showlegend=True,
+            hovermode='x unified',
+            template='plotly_white'
+        )
+        
+        # Update x-axis for better time display
+        if chart_type in ["line", "scatter", "area"]:
+            fig.update_xaxes(
+                tickformat='%Y-%m-%d %H:%M',
+                tickangle=45
+            )
+        
+        # Generate the chart image
+        img_bytes = fig.to_image(format="png", engine="kaleido")
+        
+        return Image(data=img_bytes, format="png")
+    
+    except Exception as e:
+        raise ValueError(f"Error generating telemetry chart: {str(e)}")
+
+@mcp.tool()
+async def list_available_telemetry_keys(id: str, entity_type: Literal["DEVICE", "ASSET"]) -> str:
+    """Get all available telemetry keys for a ThingsBoard device or asset.
+    
+    Use this tool when you need to:
+    - Discover what telemetry data is available for a specific device or asset
+    - Check what sensor readings or metrics are configured for an entity
+    - Verify which keys exist before requesting telemetry data
+    - Explore the data structure of IoT devices and assets
+    - Debug issues with missing telemetry keys
+    - Plan data analysis by understanding available metrics
+    
+    This tool returns a list of all telemetry keys that have been configured
+    for the specified entity, regardless of whether they currently have data.
+    
+    Args:
+        id (str): The unique identifier of the device or asset. Get this from 
+                 get_tenant_devices() or get_tenant_assets().
+                 Format: UUID string (e.g., "123e4567-e89b-12d3-a456-426614174000")
+        entity_type (Literal["DEVICE", "ASSET"]): Type of entity - must be either "DEVICE" or "ASSET" (case-sensitive).
+    
+    Returns:
+        List of available telemetry key names for the specified entity.
+        Returns empty list if no telemetry keys are configured.
+    
+    Example usage:
+        id: "123e4567-e89b-12d3-a456-426614174000"
+        entity_type: "DEVICE"
+    """
+    try:
+        available_keys = await get_available_telemetry_keys(entity_type, id)
+        
+        if available_keys:
+            formatted_keys = []
+            for key in available_keys:
+                formatted_keys.append(f"  - {key}")
+            
+            result_text = f"**Available Telemetry Keys for {entity_type} {id}:**\n\n" + "\n".join(formatted_keys)
+            result_text += f"\n\n**Total Keys**: {len(available_keys)}"
+        else:
+            result_text = f"No telemetry keys found for {entity_type} {id}. This entity may not have any telemetry data configured."
+        
+        return result_text
+    
+    except Exception as e:
+        return f"Error retrieving available telemetry keys: {str(e)}"
