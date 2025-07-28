@@ -1,11 +1,11 @@
-from resources.mcp_server import mcp, CallToolResult, TextContent
+from resources.mcp_server import mcp
 from typing import Any, Optional
 from resources.thingsboard_client import ThingsboardClient
 from utils.helpers import remove_null_values
 import uuid
 
 @mcp.tool()
-async def get_device_profiles(page: int = 0, page_size: int = 10) -> CallToolResult:
+async def get_device_profiles(page: int = 0, page_size: int = 10) -> str:
     """Retrieve a paginated list of device profiles from ThingsBoard.
     
     Use this tool when you need to:
@@ -95,36 +95,15 @@ async def get_device_profiles(page: int = 0, page_size: int = 10) -> CallToolRes
             if pagination_info:
                 result_text += "\n\n" + "\n".join(pagination_info)
             
-            return CallToolResult(
-                content=[
-                    TextContent(
-                        type="text",
-                        text=result_text
-                    )
-                ]
-            )
+            return result_text
         
-        return CallToolResult(
-            content=[
-                TextContent(
-                    type="text",
-                    text=f"Unexpected response format: {response}"
-                )
-            ]
-        )
+        return f"Unexpected response format: {response}"
     
     except Exception as e:
-        return CallToolResult(
-            content=[
-                TextContent(
-                    type="text",
-                    text=f"Error retrieving device profiles: {str(e)}"
-                )
-            ]
-        )
+        return f"Error retrieving device profiles: {str(e)}"
 
 @mcp.tool()
-async def get_device_profile(profile_id: str) -> CallToolResult:
+async def get_device_profile(profile_id: str) -> str:
     """Retrieve a specific device profile with its alarm rules configuration.
     
     Use this tool when you need to:
@@ -145,27 +124,13 @@ async def get_device_profile(profile_id: str) -> CallToolResult:
         response = await ThingsboardClient.make_thingsboard_request(endpoint)
         
         if not response:
-            return CallToolResult(
-                content=[
-                    TextContent(
-                        type="text",
-                        text=f"Device profile not found: {profile_id}"
-                    )
-                ]
-            )
+            return f"Device profile not found: {profile_id}"
         
         # Remove null values from the response
         cleaned_response = remove_null_values(response)
         
         if not cleaned_response:
-            return CallToolResult(
-                content=[
-                    TextContent(
-                        type="text",
-                        text=f"Device profile not found: {profile_id}"
-                    )
-                ]
-            )
+            return f"Device profile not found: {profile_id}"
         
         # Format the response for LLM consumption
         profile_info = []
@@ -213,24 +178,10 @@ async def get_device_profile(profile_id: str) -> CallToolResult:
         
         result_text = profile_text + alarm_rules_text
         
-        return CallToolResult(
-            content=[
-                TextContent(
-                    type="text",
-                    text=result_text
-                )
-            ]
-        )
+        return result_text
     
     except Exception as e:
-        return CallToolResult(
-            content=[
-                TextContent(
-                    type="text",
-                    text=f"Error retrieving device profile: {str(e)}"
-                )
-            ]
-        )
+        return f"Error retrieving device profile: {str(e)}"
 
 @mcp.tool()
 async def create_alarm_rule(
@@ -245,7 +196,7 @@ async def create_alarm_rule(
     schedule_type: str = "ANY_TIME",
     propagate: bool = True,
     alarm_details: Optional[str] = None
-) -> CallToolResult:
+) -> str:
     """Create a new alarm rule for a device profile.
     
     Use this tool when you need to:
@@ -271,24 +222,11 @@ async def create_alarm_rule(
         Dict containing the updated device profile with the new alarm rule
     """
     try:
-        # First, get the current device profile
-        current_profile_response = await get_device_profile(profile_id)
-        
-        # Extract the actual profile data from the response
-        # Since get_device_profile now returns CallToolResult, we need to handle this differently
-        # For now, we'll make a direct API call to get the profile
         endpoint = f"deviceProfile/{profile_id}"
         current_profile = await ThingsboardClient.make_thingsboard_request(endpoint)
         
         if not current_profile or "error" in current_profile:
-            return CallToolResult(
-                content=[
-                    TextContent(
-                        type="text",
-                        text=f"Error: Could not retrieve device profile {profile_id}"
-                    )
-                ]
-            )
+            return f"Error: Could not retrieve device profile {profile_id}"
         
         # Create the alarm rule structure
         alarm_rule = {
@@ -392,33 +330,12 @@ async def create_alarm_rule(
 
 The alarm rule has been added to the device profile and is now active."""
             
-            return CallToolResult(
-                content=[
-                    TextContent(
-                        type="text",
-                        text=result_text
-                    )
-                ]
-            )
+            return result_text
         else:
-            return CallToolResult(
-                content=[
-                    TextContent(
-                        type="text",
-                        text=f"Error: Failed to create alarm rule. Response: {response}"
-                    )
-                ]
-            )
+            return f"Error: Failed to create alarm rule. Response: {response}"
     
     except Exception as e:
-        return CallToolResult(
-            content=[
-                TextContent(
-                    type="text",
-                    text=f"Error creating alarm rule: {str(e)}"
-                )
-            ]
-        )
+        return f"Error creating alarm rule: {str(e)}"
 
 @mcp.tool()
 async def update_alarm_rule(
@@ -462,13 +379,11 @@ async def update_alarm_rule(
     
     # Find the alarm rule to update
     alarm_rule = None
-    alarm_index = None
     
     if "profileData" in current_profile and "alarms" in current_profile["profileData"]:
         for i, alarm in enumerate(current_profile["profileData"]["alarms"]):
             if alarm.get("id") == alarm_id:
                 alarm_rule = alarm
-                alarm_index = i
                 break
     
     if not alarm_rule:
@@ -549,7 +464,7 @@ async def delete_alarm_rule(profile_id: str, alarm_id: str) -> Any:
     return await ThingsboardClient.make_thingsboard_request(endpoint, method="POST", data=current_profile)
 
 @mcp.tool()
-async def list_alarm_rules(profile_id: str) -> CallToolResult:
+async def list_alarm_rules(profile_id: str) -> str:
     """List all alarm rules configured for a specific device profile.
     
     Use this tool when you need to:
@@ -572,27 +487,13 @@ async def list_alarm_rules(profile_id: str) -> CallToolResult:
         profile = await ThingsboardClient.make_thingsboard_request(endpoint)
         
         if not profile:
-            return CallToolResult(
-                content=[
-                    TextContent(
-                        type="text",
-                        text=f"Device profile not found: {profile_id}"
-                    )
-                ]
-            )
+            return f"Device profile not found: {profile_id}"
         
         # Remove null values from the profile
         cleaned_profile = remove_null_values(profile)
         
         if not cleaned_profile:
-            return CallToolResult(
-                content=[
-                    TextContent(
-                        type="text",
-                        text=f"Device profile not found: {profile_id}"
-                    )
-                ]
-            )
+            return f"Device profile not found: {profile_id}"
         
         profile_name = cleaned_profile.get("name", "Unnamed")
         alarm_rules = []
@@ -734,21 +635,7 @@ async def list_alarm_rules(profile_id: str) -> CallToolResult:
                             if condition_parts:
                                 result_text += f"\n    - {' '.join(condition_parts)}"
         
-        return CallToolResult(
-            content=[
-                TextContent(
-                    type="text",
-                    text=result_text
-                )
-            ]
-        )
+        return result_text
     
     except Exception as e:
-        return CallToolResult(
-            content=[
-                TextContent(
-                    type="text",
-                    text=f"Error listing alarm rules: {str(e)}"
-                )
-            ]
-        ) 
+        return f"Error listing alarm rules: {str(e)}" 

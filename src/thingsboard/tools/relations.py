@@ -1,10 +1,10 @@
-from resources.mcp_server import mcp, CallToolResult, TextContent
+from resources.mcp_server import mcp
 from resources.thingsboard_client import ThingsboardClient
 from typing import Any
 from utils.helpers import remove_null_values
 
 @mcp.tool()
-async def get_relations_from_id(entity_id: str, entity_type: str) -> CallToolResult:
+async def get_relations_from_id(entity_id: str, entity_type: str) -> str:
     """Retrieve all relations from a specific entity in ThingsBoard.
     
     Use this tool when you need to:
@@ -30,14 +30,7 @@ async def get_relations_from_id(entity_id: str, entity_type: str) -> CallToolRes
 
         if isinstance(response, list):
             if not response:
-                return CallToolResult(
-                    content=[
-                        TextContent(
-                            type="text",
-                            text=f"No relations found from {entity_type} {entity_id}"
-                        )
-                    ]
-                )
+                return f"No relations found from {entity_type} {entity_id}"
             
             # Remove null values from each relation
             cleaned_relations = []
@@ -52,14 +45,7 @@ async def get_relations_from_id(entity_id: str, entity_type: str) -> CallToolRes
                     cleaned_relations.append(cleaned_rel)
             
             if not cleaned_relations:
-                return CallToolResult(
-                    content=[
-                        TextContent(
-                            type="text",
-                            text=f"No relations found from {entity_type} {entity_id}"
-                        )
-                    ]
-                )
+                return f"No relations found from {entity_type} {entity_id}"
             
             # Format the response for LLM consumption
             formatted_relations = []
@@ -82,36 +68,15 @@ async def get_relations_from_id(entity_id: str, entity_type: str) -> CallToolRes
             result_text = f"**Relations from {entity_type} {entity_id}** ({len(cleaned_relations)} found):\n\n" + \
                          "\n".join(formatted_relations)
             
-            return CallToolResult(
-                content=[
-                    TextContent(
-                        type="text",
-                        text=result_text
-                    )
-                ]
-            )
+            return result_text
         
-        return CallToolResult(
-            content=[
-                TextContent(
-                    type="text",
-                    text=f"Unexpected response format: {response}"
-                )
-            ]
-        )
+        return f"Unexpected response format: {response}"
     
     except Exception as e:
-        return CallToolResult(
-            content=[
-                TextContent(
-                    type="text",
-                    text=f"Error retrieving relations from entity: {str(e)}"
-                )
-            ]
-        )
+        return f"Error retrieving relations from entity: {str(e)}"
 
 @mcp.tool()
-async def get_relations_to_id(entity_id: str, entity_type: str) -> CallToolResult:
+async def get_relations_to_id(entity_id: str, entity_type: str) -> str:
     """Retrieve all relations to a specific entity in ThingsBoard.
     
     Use this tool when you need to:
@@ -137,14 +102,7 @@ async def get_relations_to_id(entity_id: str, entity_type: str) -> CallToolResul
 
         if isinstance(response, list):
             if not response:
-                return CallToolResult(
-                    content=[
-                        TextContent(
-                            type="text",
-                            text=f"No relations found to {entity_type} {entity_id}"
-                        )
-                    ]
-                )
+                return f"No relations found to {entity_type} {entity_id}"
             
             # Remove null values from each relation
             cleaned_relations = []
@@ -159,14 +117,7 @@ async def get_relations_to_id(entity_id: str, entity_type: str) -> CallToolResul
                     cleaned_relations.append(cleaned_rel)
             
             if not cleaned_relations:
-                return CallToolResult(
-                    content=[
-                        TextContent(
-                            type="text",
-                            text=f"No relations found to {entity_type} {entity_id}"
-                        )
-                    ]
-                )
+                return f"No relations found to {entity_type} {entity_id}"
             
             # Format the response for LLM consumption
             formatted_relations = []
@@ -189,30 +140,9 @@ async def get_relations_to_id(entity_id: str, entity_type: str) -> CallToolResul
             result_text = f"**Relations to {entity_type} {entity_id}** ({len(cleaned_relations)} found):\n\n" + \
                          "\n".join(formatted_relations)
             
-            return CallToolResult(
-                content=[
-                    TextContent(
-                        type="text",
-                        text=result_text
-                    )
-                ]
-            )
+            return result_text
         
-        return CallToolResult(
-            content=[
-                TextContent(
-                    type="text",
-                    text=f"Unexpected response format: {response}"
-                )
-            ]
-        )
+        return f"Unexpected response format: {response}"
     
     except Exception as e:
-        return CallToolResult(
-            content=[
-                TextContent(
-                    type="text",
-                    text=f"Error retrieving relations to entity: {str(e)}"
-                )
-            ]
-        )
+        return f"Error retrieving relations to entity: {str(e)}"

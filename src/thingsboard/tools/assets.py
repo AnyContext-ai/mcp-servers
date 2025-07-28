@@ -1,10 +1,10 @@
-from resources.mcp_server import mcp, CallToolResult, TextContent
+from resources.mcp_server import mcp
 from typing import Any
 from resources.thingsboard_client import ThingsboardClient
 from utils.helpers import filter_entity_information, remove_null_values
 
 @mcp.tool()
-async def get_tenant_assets(page: int = 0, page_size: int = 10) -> CallToolResult:
+async def get_tenant_assets(page: int = 0, page_size: int = 10) -> str:
     """Retrieve a paginated list of IoT assets from ThingsBoard with essential information only.
     
     Use this tool when you need to:
@@ -90,30 +90,9 @@ async def get_tenant_assets(page: int = 0, page_size: int = 10) -> CallToolResul
             if pagination_info:
                 result_text += "\n\n" + "\n".join(pagination_info)
             
-            return CallToolResult(
-                content=[
-                    TextContent(
-                        type="text",
-                        text=result_text
-                    )
-                ]
-            )
+            return result_text
         
-        return CallToolResult(
-            content=[
-                TextContent(
-                    type="text",
-                    text=f"Unexpected response format: {response}"
-                )
-            ]
-        )
+        return f"Unexpected response format: {response}"
     
     except Exception as e:
-        return CallToolResult(
-            content=[
-                TextContent(
-                    type="text",
-                    text=f"Error retrieving assets: {str(e)}"
-                )
-            ]
-        )
+        return f"Error retrieving assets: {str(e)}"

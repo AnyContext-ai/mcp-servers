@@ -1,10 +1,10 @@
-from resources.mcp_server import mcp, CallToolResult, TextContent
+from resources.mcp_server import mcp
 from typing import Any
 from resources.thingsboard_client import ThingsboardClient
 from utils.helpers import filter_entity_information, remove_null_values
 
 @mcp.tool()
-async def get_tenant_devices(page: int = 0, page_size: int = 10) -> CallToolResult:
+async def get_tenant_devices(page: int = 0, page_size: int = 10) -> str:
     """Retrieve a paginated list of IoT devices from ThingsBoard with essential information only.
     
     Use this tool when you need to:
@@ -90,36 +90,15 @@ async def get_tenant_devices(page: int = 0, page_size: int = 10) -> CallToolResu
             if pagination_info:
                 result_text += "\n\n" + "\n".join(pagination_info)
             
-            return CallToolResult(
-                content=[
-                    TextContent(
-                        type="text",
-                        text=result_text
-                    )
-                ]
-            )
+            return result_text
         
-        return CallToolResult(
-            content=[
-                TextContent(
-                    type="text",
-                    text=f"Unexpected response format: {response}"
-                )
-            ]
-        )
+        return f"Unexpected response format: {response}"
     
     except Exception as e:
-        return CallToolResult(
-            content=[
-                TextContent(
-                    type="text",
-                    text=f"Error retrieving devices: {str(e)}"
-                )
-            ]
-        )
+        return f"Error retrieving devices: {str(e)}"
 
 @mcp.tool()
-async def get_device_attributes(device_id: str) -> CallToolResult:
+async def get_device_attributes(device_id: str) -> str:
     """Retrieve all attributes (metadata) for a specific IoT device in ThingsBoard.
     
     Use this tool when you need to:
@@ -154,35 +133,14 @@ async def get_device_attributes(device_id: str) -> CallToolResult:
         response = await ThingsboardClient.make_thingsboard_request(endpoint)
         
         if not response:
-            return CallToolResult(
-                content=[
-                    TextContent(
-                        type="text",
-                        text=f"No attributes found for device {device_id}"
-                    )
-                ]
-            )
+            return f"No attributes found for device {device_id}"
         
         # The API returns a list of attribute objects, not a dictionary
         if not isinstance(response, list):
-            return CallToolResult(
-                content=[
-                    TextContent(
-                        type="text",
-                        text=f"Unexpected response format for device {device_id}: {type(response)}"
-                    )
-                ]
-            )
+            return f"Unexpected response format for device {device_id}: {type(response)}"
         
         if not response:
-            return CallToolResult(
-                content=[
-                    TextContent(
-                        type="text",
-                        text=f"No attributes found for device {device_id}"
-                    )
-                ]
-            )
+            return f"No attributes found for device {device_id}"
         
         # Format the response for LLM consumption
         formatted_attributes = []
@@ -208,27 +166,13 @@ async def get_device_attributes(device_id: str) -> CallToolResult:
         else:
             result_text = f"No valid attributes found for device {device_id}"
         
-        return CallToolResult(
-            content=[
-                TextContent(
-                    type="text",
-                    text=result_text
-                )
-            ]
-        )
+        return result_text
     
     except Exception as e:
-        return CallToolResult(
-            content=[
-                TextContent(
-                    type="text",
-                    text=f"Error retrieving device attributes: {str(e)}"
-                )
-            ]
-        )
+        return f"Error retrieving device attributes: {str(e)}"
 
 @mcp.tool()
-async def get_device_attributes_by_scope(device_id: str, scope: str = "SERVER_SCOPE") -> CallToolResult:
+async def get_device_attributes_by_scope(device_id: str, scope: str = "SERVER_SCOPE") -> str:
     """Retrieve device attributes for a specific scope (SERVER_SCOPE, SHARED_SCOPE, or CLIENT_SCOPE).
     
     Use this tool when you need to:
@@ -264,48 +208,20 @@ async def get_device_attributes_by_scope(device_id: str, scope: str = "SERVER_SC
         # Validate scope
         valid_scopes = ["SERVER_SCOPE", "SHARED_SCOPE", "CLIENT_SCOPE"]
         if scope not in valid_scopes:
-            return CallToolResult(
-                content=[
-                    TextContent(
-                        type="text",
-                        text=f"Invalid scope '{scope}'. Valid scopes are: {', '.join(valid_scopes)}"
-                    )
-                ]
-            )
+            return f"Invalid scope '{scope}'. Valid scopes are: {', '.join(valid_scopes)}"
         
         endpoint = f"plugins/telemetry/DEVICE/{device_id}/values/attributes/{scope}"
         response = await ThingsboardClient.make_thingsboard_request(endpoint)
         
         if not response:
-            return CallToolResult(
-                content=[
-                    TextContent(
-                        type="text",
-                        text=f"No {scope} attributes found for device {device_id}"
-                    )
-                ]
-            )
+            return f"No {scope} attributes found for device {device_id}"
         
         # The API returns a list of attribute objects, not a dictionary
         if not isinstance(response, list):
-            return CallToolResult(
-                content=[
-                    TextContent(
-                        type="text",
-                        text=f"Unexpected response format for device {device_id} {scope}: {type(response)}"
-                    )
-                ]
-            )
+            return f"Unexpected response format for device {device_id} {scope}: {type(response)}"
         
         if not response:
-            return CallToolResult(
-                content=[
-                    TextContent(
-                        type="text",
-                        text=f"No {scope} attributes found for device {device_id}"
-                    )
-                ]
-            )
+            return f"No {scope} attributes found for device {device_id}"
         
         # Format the response for LLM consumption
         formatted_attributes = []
@@ -331,21 +247,7 @@ async def get_device_attributes_by_scope(device_id: str, scope: str = "SERVER_SC
         else:
             result_text = f"No valid {scope} attributes found for device {device_id}"
         
-        return CallToolResult(
-            content=[
-                TextContent(
-                    type="text",
-                    text=result_text
-                )
-            ]
-        )
+        return result_text
     
     except Exception as e:
-        return CallToolResult(
-            content=[
-                TextContent(
-                    type="text",
-                    text=f"Error retrieving {scope} device attributes: {str(e)}"
-                )
-            ]
-        )
+        return f"Error retrieving {scope} attributes: {str(e)}"

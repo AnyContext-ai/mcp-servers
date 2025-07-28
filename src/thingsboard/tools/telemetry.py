@@ -1,16 +1,15 @@
-from resources.mcp_server import mcp, CallToolResult, TextContent, ImageContent
+from resources.mcp_server import mcp
+from mcp.server.fastmcp import Image
 from resources.thingsboard_client import ThingsboardClient
 from utils.helpers import remove_null_values, format_timestamp_range, convert_timestamps_to_datetime, format_timestamp_for_display, get_available_telemetry_keys
 import plotly.graph_objects as go
-from plotly.subplots import make_subplots
-import base64
 from typing import Literal
 
 MAX_DATA_POINTS_DISPLAY = 20
 
 @mcp.tool()
-async def get_historic_telemetry(id: str, entity_type: Literal["DEVICE", "ASSET"], keys: str, startTs: int, endTs: int) -> CallToolResult:
-    f"""Retrieve historical time-series data for a ThingsBoard device or asset within a specified time range.
+async def get_historic_telemetry(id: str, entity_type: Literal["DEVICE", "ASSET"], keys: str, startTs: int, endTs: int) -> str:
+    """Retrieve historical time-series data for a ThingsBoard device or asset within a specified time range.
     
     Use this tool when you need to:
     - Analyze device performance over time (temperature trends, sensor readings, etc.)
@@ -23,7 +22,7 @@ async def get_historic_telemetry(id: str, entity_type: Literal["DEVICE", "ASSET"
     This tool returns raw time-series data points with timestamps and values for each requested key.
     The data is returned in chronological order within the specified time range.
     
-    **Note**: For large datasets (>{MAX_DATA_POINTS_DISPLAY} data points), the response shows a sample of the data.
+    **Note**: For large datasets (>20 data points), the response shows a sample of the data.
     For complete data analysis, consider using get_telemetry_chart() for visual analysis
     or get_average_telemetry() for statistical summaries.
     
@@ -95,14 +94,7 @@ async def get_historic_telemetry(id: str, entity_type: Literal["DEVICE", "ASSET"
             else:
                 error_message += f"\n**Issue**: No telemetry keys found for this {entity_type}. This entity may not have any telemetry data configured."
             
-            return CallToolResult(
-                content=[
-                    TextContent(
-                        type="text",
-                        text=error_message
-                    )
-                ]
-            )
+            return error_message
         
         # Remove null values from the response for processing
         cleaned_response = remove_null_values(response)
@@ -113,37 +105,28 @@ async def get_historic_telemetry(id: str, entity_type: Literal["DEVICE", "ASSET"
         
         for key, data_points in cleaned_response.items():
             if isinstance(data_points, list) and data_points:
-                formatted_data.append(f"**{key}** ({len(data_points)} data points):")
-                
-                # Show more data points for better visibility
-                if len(data_points) <= MAX_DATA_POINTS_DISPLAY:
-                    # Show all points if MAX_DATA_POINTS_DISPLAY or fewer
-                    for point in data_points:
-                        ts = point.get('ts', 'N/A')
-                        value = point.get('value', 'N/A')
-                        formatted_ts = format_timestamp_for_display(ts) if ts != 'N/A' else 'N/A'
-                        formatted_data.append(f"  - {formatted_ts}: {value}")
-                else:
-                    # Show first MAX_DATA_POINTS_DISPLAY points for better context without middle truncation
-                    for i, point in enumerate(data_points[:MAX_DATA_POINTS_DISPLAY]):
-                        ts = point.get('ts', 'N/A')
-                        value = point.get('value', 'N/A')
-                        formatted_ts = format_timestamp_for_display(ts) if ts != 'N/A' else 'N/A'
-                        formatted_data.append(f"  - {formatted_ts}: {value}")
-                    formatted_data.append(f"  ... ({len(data_points) - MAX_DATA_POINTS_DISPLAY} more data points available) ...")
-                
+                # Limit the number of data points displayed
+                display_points = data_points[-MAX_DATA_POINTS_DISPLAY:] if len(data_points) > MAX_DATA_POINTS_DISPLAY else data_points
                 total_points += len(data_points)
-                formatted_data.append("")
+                
+                formatted_points = []
+                for point in display_points:
+                    ts = point.get('ts', 'N/A')
+                    value = point.get('value', 'N/A')
+                    formatted_ts = format_timestamp_for_display(ts) if ts != 'N/A' else 'N/A'
+                    formatted_points.append(f"    {formatted_ts}: {value}")
+                
+                if len(data_points) > MAX_DATA_POINTS_DISPLAY:
+                    formatted_points.append(f"    ... and {len(data_points) - MAX_DATA_POINTS_DISPLAY} more data points")
+                
+                formatted_data.append(f"**{key}** ({len(data_points)} data points):\n" + "\n".join(formatted_points))
             else:
                 formatted_data.append(f"**{key}**: No data available")
-                formatted_data.append("")
         
-        time_range_info = f"""
-**Time Range**: {startTs} to {endTs}
-**Entity**: {entity_type} {id}
-**Total Data Points**: {total_points}"""
+        # Format time range info
+        time_range_info = format_timestamp_range(startTs, endTs)
         
-        # Add guidance for getting more data
+        # Add guidance for large datasets
         guidance_text = ""
         if total_points > MAX_DATA_POINTS_DISPLAY:
             guidance_text = f"""
@@ -170,27 +153,13 @@ This response shows a sample of {total_points} total data points. To get more de
         
         result_text = f"**Historical Telemetry Data:**\n{time_range_info}\n\n" + "\n".join(formatted_data) + guidance_text
         
-        return CallToolResult(
-            content=[
-                TextContent(
-                    type="text",
-                    text=result_text
-                )
-            ]
-        )
+        return result_text
     
     except Exception as e:
-        return CallToolResult(
-            content=[
-                TextContent(
-                    type="text",
-                    text=f"Error retrieving historical telemetry: {str(e)}"
-                )
-            ]
-        )
+        return f"Error retrieving historical telemetry: {str(e)}"
 
 @mcp.tool()
-async def get_average_telemetry(id: str, entity_type: Literal["DEVICE", "ASSET"], keys: str, startTs: int, endTs: int) -> CallToolResult:
+async def get_average_telemetry(id: str, entity_type: Literal["DEVICE", "ASSET"], keys: str, startTs: int, endTs: int) -> str:
     """Calculate statistical averages for time-series data from a ThingsBoard device or asset.
     
     Use this tool when you need to:
@@ -276,14 +245,7 @@ async def get_average_telemetry(id: str, entity_type: Literal["DEVICE", "ASSET"]
             else:
                 error_message += f"\n**Issue**: No telemetry keys found for this {entity_type}. This entity may not have any telemetry data configured."
             
-            return CallToolResult(
-                content=[
-                    TextContent(
-                        type="text",
-                        text=error_message
-                    )
-                ]
-            )
+            return error_message
         
         # Remove null values from the response for processing
         cleaned_response = remove_null_values(response)
@@ -348,27 +310,13 @@ async def get_average_telemetry(id: str, entity_type: Literal["DEVICE", "ASSET"]
         
         result_text = f"**Telemetry Statistics:**\n{time_range_info}\n\n" + "\n".join(formatted_stats)
         
-        return CallToolResult(
-            content=[
-                TextContent(
-                    type="text",
-                    text=result_text
-                )
-            ]
-        )
+        return result_text
     
     except Exception as e:
-        return CallToolResult(
-            content=[
-                TextContent(
-                    type="text",
-                    text=f"Error calculating telemetry averages: {str(e)}"
-                )
-            ]
-        )
+        return f"Error calculating telemetry averages: {str(e)}"
 
 @mcp.tool()
-async def get_latest_telemetry(id: str, entity_type: Literal["DEVICE", "ASSET"], keys: str = "") -> CallToolResult:
+async def get_latest_telemetry(id: str, entity_type: Literal["DEVICE", "ASSET"], keys: str = "") -> str:
     """Retrieve the most recent telemetry data for a ThingsBoard device or asset.
     
     Use this tool when you need to:
@@ -448,14 +396,7 @@ async def get_latest_telemetry(id: str, entity_type: Literal["DEVICE", "ASSET"],
             else:
                 error_message += f"\n**Issue**: No telemetry keys found for this {entity_type}. This entity may not have any telemetry data configured."
             
-            return CallToolResult(
-                content=[
-                    TextContent(
-                        type="text",
-                        text=error_message
-                    )
-                ]
-            )
+            return error_message
         
         # Remove null values from the response for processing
         cleaned_response = remove_null_values(response)
@@ -477,27 +418,13 @@ async def get_latest_telemetry(id: str, entity_type: Literal["DEVICE", "ASSET"],
         entity_info = f"**Latest Telemetry for {entity_type} {id}:**"
         result_text = f"{entity_info}\n\n" + "\n".join(formatted_data)
         
-        return CallToolResult(
-            content=[
-                TextContent(
-                    type="text",
-                    text=result_text
-                )
-            ]
-        )
+        return result_text
     
     except Exception as e:
-        return CallToolResult(
-            content=[
-                TextContent(
-                    type="text",
-                    text=f"Error retrieving latest telemetry: {str(e)}"
-                )
-            ]
-        )
+        return f"Error retrieving latest telemetry: {str(e)}"
 
 @mcp.tool()
-async def get_telemetry_chart(id: str, entity_type: Literal["DEVICE", "ASSET"], keys: str, startTs: int, endTs: int, chart_type: Literal["line", "scatter", "bar", "area"] = "line", width: int = 800, height: int = 600) -> CallToolResult:
+async def get_telemetry_chart(id: str, entity_type: Literal["DEVICE", "ASSET"], keys: str, startTs: int, endTs: int, chart_type: Literal["line", "scatter", "bar", "area"] = "line", width: int = 800, height: int = 600) -> Image:
     """Generate a chart visualization of historical telemetry data for a ThingsBoard device or asset.
     
     Use this tool when you need to:
@@ -541,14 +468,7 @@ async def get_telemetry_chart(id: str, entity_type: Literal["DEVICE", "ASSET"], 
         # Validate chart type
         valid_chart_types = ["line", "scatter", "bar", "area"]
         if chart_type not in valid_chart_types:
-            return CallToolResult(
-                content=[
-                    TextContent(
-                        type="text",
-                        text=f"Invalid chart type '{chart_type}'. Valid types are: {', '.join(valid_chart_types)}"
-                    )
-                ]
-            )
+            raise ValueError(f"Invalid chart type '{chart_type}'. Valid types are: {', '.join(valid_chart_types)}")
         
         # Get telemetry data
         endpoint = f"plugins/telemetry/{entity_type}/{id}/values/timeseries"
@@ -594,155 +514,74 @@ async def get_telemetry_chart(id: str, entity_type: Literal["DEVICE", "ASSET"], 
             else:
                 error_message += f"\n**Issue**: No telemetry keys found for this {entity_type}. This entity may not have any telemetry data configured."
             
-            return CallToolResult(
-                content=[
-                    TextContent(
-                        type="text",
-                        text=error_message
-                    )
-                ]
-            )
+            raise ValueError(error_message)
         
         # Remove null values from the response for processing
         cleaned_response = remove_null_values(response)
         
-        # Process data for charting
-        chart_data = {}
-        summary_stats = {}
-        
-        for key, data_points in cleaned_response.items():
-            if isinstance(data_points, list) and data_points:
-                # Extract timestamps and values
-                timestamps = []
-                values = []
-                numeric_values = []
-                
-                for point in data_points:
-                    if isinstance(point, dict) and 'ts' in point and 'value' in point:
-                        ts = point['ts']
-                        value = point['value']
-                        
-                        timestamps.append(ts)
-                        values.append(value)
-                        
-                        # Try to convert to numeric for statistics
-                        try:
-                            numeric_value = float(value)
-                            numeric_values.append(numeric_value)
-                        except (ValueError, TypeError):
-                            pass
-                
-                if timestamps and values:
-                    chart_data[key] = {
-                        'timestamps': timestamps,
-                        'values': values
-                    }
-                    
-                    # Calculate summary statistics for numeric data
-                    if numeric_values:
-                        summary_stats[key] = {
-                            'count': len(numeric_values),
-                            'min': min(numeric_values),
-                            'max': max(numeric_values),
-                            'avg': sum(numeric_values) / len(numeric_values)
-                        }
-                    else:
-                        summary_stats[key] = {
-                            'count': len(values),
-                            'type': 'non-numeric'
-                        }
-        
-        if not chart_data:
-            return CallToolResult(
-                content=[
-                    TextContent(
-                        type="text",
-                        text=f"No valid telemetry data found for {entity_type} {id} in the specified time range"
-                    )
-                ]
-            )
-        
         # Create the chart
-        fig = make_subplots(
-            rows=1, cols=1,
-            subplot_titles=[f"{entity_type} Telemetry: {', '.join(chart_data.keys())}"],
-            specs=[[{"secondary_y": False}]]
-        )
+        fig = go.Figure()
         
-        # Add traces for each key
+        # Color palette for multiple keys
         colors = ['#1f77b4', '#ff7f0e', '#2ca02c', '#d62728', '#9467bd', '#8c564b', '#e377c2', '#7f7f7f', '#bcbd22', '#17becf']
         
-        for i, (key, data) in enumerate(chart_data.items()):
-            color = colors[i % len(colors)]
-            
-            # Convert timestamps to datetime for better display
-            dates = convert_timestamps_to_datetime(data['timestamps'])
-            
-            # Determine if values are numeric
-            try:
-                numeric_values = [float(v) for v in data['values']]
-                is_numeric = True
-            except (ValueError, TypeError):
-                numeric_values = data['values']
-                is_numeric = False
-            
-            if chart_type == "line":
-                fig.add_trace(
-                    go.Scatter(
-                        x=dates,
-                        y=numeric_values if is_numeric else data['values'],
-                        mode='lines+markers',
-                        name=key,
-                        line=dict(color=color, width=2),
-                        marker=dict(size=4)
-                    )
-                )
-            elif chart_type == "scatter":
-                fig.add_trace(
-                    go.Scatter(
-                        x=dates,
-                        y=numeric_values if is_numeric else data['values'],
-                        mode='markers',
-                        name=key,
-                        marker=dict(color=color, size=6)
-                    )
-                )
-            elif chart_type == "bar":
-                if is_numeric:
-                    fig.add_trace(
-                        go.Bar(
-                            x=dates,
-                            y=numeric_values,
-                            name=key,
-                            marker_color=color
-                        )
-                    )
-                else:
-                    # For non-numeric data, create a count chart
-                    value_counts = {}
-                    for v in data['values']:
-                        value_counts[v] = value_counts.get(v, 0) + 1
+        for i, (key, data_points) in enumerate(cleaned_response.items()):
+            if isinstance(data_points, list) and data_points:
+                # Convert timestamps to datetime for better plotting
+                timestamps = []
+                values = []
+                
+                for point in data_points:
+                    ts = point.get('ts')
+                    value = point.get('value')
+                    if ts is not None and value is not None:
+                        timestamps.append(convert_timestamps_to_datetime(ts))
+                        values.append(value)
+                
+                if timestamps and values:
+                    color = colors[i % len(colors)]
                     
-                    fig.add_trace(
-                        go.Bar(
-                            x=list(value_counts.keys()),
-                            y=list(value_counts.values()),
-                            name=f"{key} (count)",
-                            marker_color=color
+                    if chart_type == "line":
+                        fig.add_trace(
+                            go.Scatter(
+                                x=timestamps,
+                                y=values,
+                                mode='lines+markers',
+                                name=key,
+                                line=dict(color=color, width=2),
+                                marker=dict(size=4)
+                            )
                         )
-                    )
-            elif chart_type == "area":
-                if is_numeric:
-                    fig.add_trace(
-                        go.Scatter(
-                            x=dates,
-                            y=numeric_values,
-                            mode='lines',
-                            fill='tonexty',
-                            name=key,
-                            line=dict(color=color, width=2)
+                    elif chart_type == "scatter":
+                        fig.add_trace(
+                            go.Scatter(
+                                x=timestamps,
+                                y=values,
+                                mode='markers',
+                                name=key,
+                                marker=dict(color=color, size=6)
+                            )
                         )
-                    )
+                    elif chart_type == "bar":
+                        fig.add_trace(
+                            go.Bar(
+                                x=timestamps,
+                                y=values,
+                                name=key,
+                                marker_color=color
+                            )
+                        )
+                    elif chart_type == "area":
+                        fig.add_trace(
+                            go.Scatter(
+                                x=timestamps,
+                                y=values,
+                                mode='lines',
+                                fill='tonexty',
+                                name=key,
+                                line=dict(color=color, width=2)
+                            )
+                        )
         
         # Update layout
         fig.update_layout(
@@ -765,53 +604,14 @@ async def get_telemetry_chart(id: str, entity_type: Literal["DEVICE", "ASSET"], 
         
         # Generate the chart image
         img_bytes = fig.to_image(format="png", engine="kaleido")
-        img_base64 = base64.b64encode(img_bytes).decode('utf-8')
         
-        # Create summary text
-        time_range_str = format_timestamp_range(startTs, endTs)
-        
-        summary_text = f"""**Telemetry Chart Generated Successfully**
-
-**Entity**: {entity_type} {id}
-**Time Range**: {time_range_str}
-**Chart Type**: {chart_type.title()}
-**Keys**: {', '.join(chart_data.keys())}
-
-**Summary Statistics:**
-"""
-        
-        for key, stats in summary_stats.items():
-            if stats.get('type') == 'non-numeric':
-                summary_text += f"- **{key}**: {stats['count']} data points (non-numeric values)\n"
-            else:
-                summary_text += f"- **{key}**: {stats['count']} points, avg: {stats['avg']:.2f}, min: {stats['min']:.2f}, max: {stats['max']:.2f}\n"
-        
-        return CallToolResult(
-            content=[
-                TextContent(
-                    type="text",
-                    text=summary_text
-                ),
-                ImageContent(
-                    type="image",
-                    data=img_base64,
-                    mimeType="image/png"
-                )
-            ]
-        )
+        return Image(data=img_bytes, format="png")
     
     except Exception as e:
-        return CallToolResult(
-            content=[
-                TextContent(
-                    type="text",
-                    text=f"Error generating telemetry chart: {str(e)}"
-                )
-            ]
-        )
+        raise ValueError(f"Error generating telemetry chart: {str(e)}")
 
 @mcp.tool()
-async def list_available_telemetry_keys(id: str, entity_type: Literal["DEVICE", "ASSET"]) -> CallToolResult:
+async def list_available_telemetry_keys(id: str, entity_type: Literal["DEVICE", "ASSET"]) -> str:
     """Get all available telemetry keys for a ThingsBoard device or asset.
     
     Use this tool when you need to:
@@ -852,21 +652,7 @@ async def list_available_telemetry_keys(id: str, entity_type: Literal["DEVICE", 
         else:
             result_text = f"No telemetry keys found for {entity_type} {id}. This entity may not have any telemetry data configured."
         
-        return CallToolResult(
-            content=[
-                TextContent(
-                    type="text",
-                    text=result_text
-                )
-            ]
-        )
+        return result_text
     
     except Exception as e:
-        return CallToolResult(
-            content=[
-                TextContent(
-                    type="text",
-                    text=f"Error retrieving available telemetry keys: {str(e)}"
-                )
-            ]
-        )
+        return f"Error retrieving available telemetry keys: {str(e)}"
