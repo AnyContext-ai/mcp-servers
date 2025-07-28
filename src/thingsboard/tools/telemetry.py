@@ -6,9 +6,11 @@ from plotly.subplots import make_subplots
 import base64
 from typing import Literal
 
+MAX_DATA_POINTS_DISPLAY = 20
+
 @mcp.tool()
 async def get_historic_telemetry(id: str, entity_type: Literal["DEVICE", "ASSET"], keys: str, startTs: int, endTs: int) -> CallToolResult:
-    """Retrieve historical time-series data for a ThingsBoard device or asset within a specified time range.
+    f"""Retrieve historical time-series data for a ThingsBoard device or asset within a specified time range.
     
     Use this tool when you need to:
     - Analyze device performance over time (temperature trends, sensor readings, etc.)
@@ -21,7 +23,7 @@ async def get_historic_telemetry(id: str, entity_type: Literal["DEVICE", "ASSET"
     This tool returns raw time-series data points with timestamps and values for each requested key.
     The data is returned in chronological order within the specified time range.
     
-    **Note**: For large datasets (>20 data points), the response shows a sample of the data.
+    **Note**: For large datasets (>{MAX_DATA_POINTS_DISPLAY} data points), the response shows a sample of the data.
     For complete data analysis, consider using get_telemetry_chart() for visual analysis
     or get_average_telemetry() for statistical summaries.
     
@@ -40,11 +42,6 @@ async def get_historic_telemetry(id: str, entity_type: Literal["DEVICE", "ASSET"
         {key: [{"ts": timestamp, "value": value}, ...]}
         - ts: Timestamp in milliseconds UTC
         - value: The actual telemetry value (can be string, number, boolean, etc.)
-        
-        **Data Display**: 
-        - Shows all data points if ≤20 total points
-        - Shows first 20 points with truncation indicator if >20 points
-        - Includes guidance on how to get more detailed data when truncated
     
     Example usage:
         keys: "temperature,humidity"
@@ -119,21 +116,21 @@ async def get_historic_telemetry(id: str, entity_type: Literal["DEVICE", "ASSET"
                 formatted_data.append(f"**{key}** ({len(data_points)} data points):")
                 
                 # Show more data points for better visibility
-                if len(data_points) <= 20:
-                    # Show all points if 20 or fewer
+                if len(data_points) <= MAX_DATA_POINTS_DISPLAY:
+                    # Show all points if MAX_DATA_POINTS_DISPLAY or fewer
                     for point in data_points:
                         ts = point.get('ts', 'N/A')
                         value = point.get('value', 'N/A')
                         formatted_ts = format_timestamp_for_display(ts) if ts != 'N/A' else 'N/A'
                         formatted_data.append(f"  - {formatted_ts}: {value}")
                 else:
-                    # Show first 20 points for better context without middle truncation
-                    for i, point in enumerate(data_points[:20]):
+                    # Show first MAX_DATA_POINTS_DISPLAY points for better context without middle truncation
+                    for i, point in enumerate(data_points[:MAX_DATA_POINTS_DISPLAY]):
                         ts = point.get('ts', 'N/A')
                         value = point.get('value', 'N/A')
                         formatted_ts = format_timestamp_for_display(ts) if ts != 'N/A' else 'N/A'
                         formatted_data.append(f"  - {formatted_ts}: {value}")
-                    formatted_data.append(f"  ... ({len(data_points) - 20} more data points available) ...")
+                    formatted_data.append(f"  ... ({len(data_points) - MAX_DATA_POINTS_DISPLAY} more data points available) ...")
                 
                 total_points += len(data_points)
                 formatted_data.append("")
@@ -148,7 +145,7 @@ async def get_historic_telemetry(id: str, entity_type: Literal["DEVICE", "ASSET"
         
         # Add guidance for getting more data
         guidance_text = ""
-        if total_points > 20:
+        if total_points > MAX_DATA_POINTS_DISPLAY:
             guidance_text = f"""
 
 **Data Truncation Notice:**
