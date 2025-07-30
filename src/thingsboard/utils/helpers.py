@@ -84,19 +84,19 @@ def format_timestamp_range(start_ts: int, end_ts: int) -> str:
     except (ValueError, OSError):
         return f"{start_ts} to {end_ts}"
 
-def convert_timestamps_to_datetime(timestamps: list) -> list:
+def convert_timestamps_to_datetime(timestamps: int):
     """Convert millisecond timestamps to datetime objects.
     
     Args:
-        timestamps (list): List of millisecond timestamps
+        timestamps (int): Millisecond timestamp
     
     Returns:
-        list: List of datetime objects
+        datetime: Datetime object
     """
     from datetime import datetime
     
     try:
-        return [datetime.fromtimestamp(ts / 1000) for ts in timestamps]
+        return datetime.fromtimestamp(timestamps / 1000)
     except (ValueError, OSError):
         return timestamps
 

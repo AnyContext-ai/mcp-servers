@@ -602,6 +602,14 @@ async def get_telemetry_chart(id: str, entity_type: Literal["DEVICE", "ASSET"], 
                 tickangle=45
             )
         
+        # Update y-axis to ensure natural numerical order
+        fig.update_yaxes(
+            type='linear',
+            autorange=True,
+            tickmode='auto',
+            nticks=10
+        )
+        
         # Generate the chart image
         img_bytes = fig.to_image(format="png", engine="kaleido")
         
